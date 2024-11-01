@@ -1,0 +1,25 @@
+version: '2'
+services:
+  mcm_jl_pluto:
+    container_name: mcm_jl_pluto
+    build:
+      context: .
+    volumes:
+      - .:/work
+    command: julia ./notebooks/pluto_serve.jl
+    ports:
+      - "1234:1234"
+  mcm_jl:
+    container_name: mcm_jl_benchmark
+    build:
+      context: .
+    volumes:
+      - .:/work
+    command: julia ./src/mcm_benchmark.jl
+  read_result:
+    container_name: read_result
+    build:
+      context: .
+    volumes:
+      - .:/work
+    command: julia ./src/read.jl

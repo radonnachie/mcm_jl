@@ -24,6 +24,7 @@ end
     MinAdderCount
     MinMaxAdderDepth
     MinAdderCountPlusMaxAdderDepth
+    MinAdderDepthSum
 end
 
 @kwdef struct ResultsMCM

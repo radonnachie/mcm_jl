@@ -30,6 +30,7 @@ function mcm(
 	maximum_value = 2^data_bit_width
 
 	nof_constant_multiples = length(constant_multiples)
+	nof_unique_constant_multiples = length(unique(constant_multiples))
 	
 	input_sign_values = [-1, 1]
 	nof_input_sign_values = length(input_sign_values)
@@ -215,38 +216,49 @@ function mcm(
 		adder_depth[a] <= 0 + adder_enables[a]*depth_M
 	)
 
-    # if objective in [MinAdderCountPlusMaxAdderDepth, MinMaxAdderDepth]
-        ## determine the maximum adder_depth
-        @variable(model, 0 <= adder_depth_max <= nof_adders+1, Int)
-        @constraint(model, [a = 1:nof_adders],
-            adder_depth_max >= adder_depth[a]
-        )
-        @variable(model, adder_depth_max_sel[1:nof_adders], Bin)
-        @constraint(model,
-            sum(adder_depth_max_sel) == 1
-        )
-        @constraint(model, [a = 1:nof_adders],
-            adder_depth[a] - (1 - adder_depth_max_sel[a])*depth_M <= adder_depth_max
-        )
-        @constraint(model, [a = 1:nof_adders],
-            adder_depth_max <= adder_depth[a] + (1 - adder_depth_max_sel[a])*depth_M
-        )
-    # end
+	## determine the maximum adder_depth
+	@variable(model, 0 <= adder_depth_max <= nof_adders+1, Int)
+	@constraint(model, [a = 1:nof_adders],
+		adder_depth_max >= adder_depth[a]
+	)
+	@variable(model, adder_depth_max_sel[1:nof_adders], Bin)
+	@constraint(model,
+		sum(adder_depth_max_sel) == 1
+	)
+	@constraint(model, [a = 1:nof_adders],
+		adder_depth[a] - (1 - adder_depth_max_sel[a])*depth_M <= adder_depth_max
+	)
+	@constraint(model, [a = 1:nof_adders],
+		adder_depth_max <= adder_depth[a] + (1 - adder_depth_max_sel[a])*depth_M
+	)
+
+	## limit adder depth
+	@variable(model, 1 <= adder_depth_limit <= nof_adders+1, Int)
+	@constraint(model, adder_depth_max <= adder_depth_limit)
+
+	## limit adder count
+	@variable(model, nof_unique_constant_multiples <= adder_enable_limit <= nof_adders, Int)
+	@constraint(model, sum(adder_enables) <= adder_enable_limit)
+
+	## sum(adder_depth) is between 1*unique_coeff and sum(nof_adders, nof_adders-1, ... 1)
+	@variable(model, nof_unique_constant_multiples <= adder_depth_sum <= (nof_adders+1)*nof_adders/2, Int)
+	@constraint(model, adder_depth_sum == sum(adder_depth))
 
 	# @objective(model, Min, sum(adder_depth))
     if objective == MinAdderCount
-	    @objective(model, Min, sum(adder_enables))
+	    @objective(model, Min, adder_enable_limit)
     end
     if objective == MinMaxAdderDepth
-        @objective(model, Min, adder_depth_max)
+        @objective(model, Min, adder_depth_limit)
     end
     if objective == MinAdderCountPlusMaxAdderDepth
-	    @objective(model, Min, sum(adder_enables) + adder_depth_max)
+	    @objective(model, Min, adder_enable_limit + adder_depth_limit)
+    end
+    if objective == MinAdderDepthSum
+	    @objective(model, Min, adder_depth_sum)
     end
 	
-    # ts_start = time_ns()
 	optimize!(model)
-    # ts_end = time_ns()
 
     @show is_solved_and_feasible(model)
     @show result_count(model)
@@ -260,17 +272,17 @@ function mcm(
     for i in unique_result_indices
         push!(results, ResultsMCM(
             result_index = i,
-            adder_count = sum(value.(adder_enables; result=i)),
+            adder_count = sum(round.(Int, value.(adder_enables; result=i))),
             depth_max = floor(Int, value(adder_depth_max; result=i)),
             outputs = floor.(Int, value.(adder_outputs; result=i)),
-            output_value_sel = value.(adder_output_value_sel; result=i),
+            output_value_sel = round.(Int, value.(adder_output_value_sel; result=i)),
             input_shifted = floor.(Int, value.(adder_input_shifted; result=i)),
             input_value = floor.(Int, value.(adder_input_value; result=i)),
-            input_value_sel = value.(adder_input_value_sel; result=i),
-            input_shift_sel = value.(adder_input_shift_sel; result=i),
+            input_value_sel = round.(Int, value.(adder_input_value_sel; result=i)),
+            input_shift_sel = round.(Int, value.(adder_input_shift_sel; result=i)),
             inputs = floor.(Int, value.(adder_inputs; result=i)),
             results = floor.(Int, value.(adder_results; result=i)),
-            enables = value.(adder_enables; result=i),
+            enables = round.(Int, value.(adder_enables; result=i)),
             depth = floor.(Int, value.(adder_depth; result=i)),
             input_depths = floor.(Int, value.(adder_input_depths; result=i)),
         ))

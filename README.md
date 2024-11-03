@@ -7,5 +7,5 @@
 ### 2. Execute Benchmarks
 - `docker compose up mcm_jl_benchmark`
 ### 3. Review Results
-- `docker compose up read_result`
+- `docker compose up read_best`
 

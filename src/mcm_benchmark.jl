@@ -2,12 +2,13 @@ using Serialization
 using Dates
 include("$(@__DIR__)/structs.jl")
 include("$(@__DIR__)/mcm.jl")
+include("$(@__DIR__)/csd.jl")
 include("$(@__DIR__)/benchmark_ingest.jl")
 
 benchmarks = readBenchmarkDetails("/work/data/benchmarks.csv")
 
 param = GurobiParam(
-    TimeLimit=60,
+    TimeLimit=600,
     Presolve=1,
     IntegralityFocus=1,
     MIPFocus=1, # https://www.gurobi.com/documentation/current/refman/mipfocus.html#parameter:MIPFocus
@@ -16,18 +17,22 @@ param = GurobiParam(
 
 now_str = Dates.format(Dates.now(), "Y-m-d_H-M-S")
 
-for bench in benchmarks[1:4]
+for bench in benchmarks
     if bench.number_of_unique_coefficients > 0
-        for obj in instances(ObjectiveMCM)
+        for obj in [MinAdderCountPlusMaxAdderDepth, MinAdderDepthSum] #instances(ObjectiveMCM)
             model = getGurobiModelMILP(;
                 param=param
             )
-            
+
+            max_nof_adders = sum(count_components.(
+                csd.(UInt.(abs.(bench.unique_coefficients)))
+            ))
+
             ts_start = time_ns()
             results = mcm(
                 model,
                 bench.unique_coefficients;
-                nof_adders=Int(bench.number_of_unique_coefficients+4),
+                nof_adders=max_nof_adders,
                 data_bit_width=Int(bench.wordlength),
                 objective=obj
             )

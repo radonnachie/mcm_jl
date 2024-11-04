@@ -17,7 +17,14 @@ function getGurobiModelMILP(;
     model
 end
 
-function mcm(
+function sort_by_component_count!(coeffs::Vector{Int})
+    sort!(
+        coeffs,
+        by=x->count_components(csd(UInt(abs(x))))
+    )
+end
+
+function mcm!(
     model::Model,
     constant_multiples::Vector{Int}
     ;
@@ -47,27 +54,21 @@ function mcm(
 	Int)
 	## A psuedo output for a static, non-existent adder is set to 1
 	@constraint(model, adder_outputs[0] == 1)
-	## The other outputs selectively target desired values
-	@variable(model,
-		adder_output_value_sel[
-			1:nof_constant_multiples,
-			1:nof_adders
-		],
-	Bin)
-	@constraint(model, [a = 1:nof_adders],
-		sum(adder_output_value_sel[v, a] for v in 1:nof_constant_multiples) <= 1
-	)
+	## Because adder inputs are restricted to the outputs of previous adders
+	## the last N outputs are constrained to the coefficients, which are ordered
+	## by the number of CSD high-bits
+	sort_by_component_count!(constant_multiples)
 	@constraint(model, [v = 1:nof_constant_multiples],
-		sum(adder_output_value_sel[v, a] for a in 1:nof_adders) == 1
+		adder_outputs[nof_adders-nof_constant_multiples+v] == constant_multiples[v]
 	)
-	## Constrain adder output to its selected value
-	delta_M = 2*maximum_value
-	@constraint(model, [v = 1:nof_constant_multiples, a = 1:nof_adders],
-        constant_multiples[v] - (1 - adder_output_value_sel[v, a])*delta_M <= adder_outputs[a]
+	### backwards compatibility
+	adder_output_value_sel = zeros(Bool,
+		nof_constant_multiples,
+		nof_adders
 	)
-	@constraint(model, [v = 1:nof_constant_multiples, a = 1:nof_adders],
-		adder_outputs[a] <= constant_multiples[v] + (1 - adder_output_value_sel[v, a])*delta_M
-	)
+	for v in 1:nof_constant_multiples
+		adder_output_value_sel[v,nof_adders-nof_constant_multiples+v] = true
+	end
 
 	# Each adder input has 3 factors: sign, shift and value
 	## the shift*value product is captured by indicator constraints in `input_shifted`
@@ -91,7 +92,7 @@ function mcm(
 	@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
 		sum(adder_input_value_sel[s, i, a] for s in 0:a-1) == 1
 	)
-	@constraint(model, [i = 1:nof_adder_inputs, a =1:nof_adders],
+	@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
 		sum(adder_input_value_sel[s, i, a] for s in a:nof_adders) == 0
 	)
 	value_M = 2*maximum_value
@@ -158,6 +159,10 @@ function mcm(
 			1:nof_adders
 		],
 	Bin)
+	### Constrain last N to always be enabled
+	@constraint(model, [a = nof_adders-(nof_constant_multiples-1):nof_adders],
+		adder_enables[a] == 1
+	)
 	### When enabled, constrain to result
 	output_M = 2*maximum_value
 	@constraint(model, [a = 1:nof_adders],
@@ -275,7 +280,7 @@ function mcm(
             adder_count = sum(round.(Int, value.(adder_enables; result=i))),
             depth_max = floor(Int, value(adder_depth_max; result=i)),
             outputs = floor.(Int, value.(adder_outputs; result=i)),
-            output_value_sel = round.(Int, value.(adder_output_value_sel; result=i)),
+            output_value_sel = adder_output_value_sel,
             input_shifted = floor.(Int, value.(adder_input_shifted; result=i)),
             input_value = floor.(Int, value.(adder_input_value; result=i)),
             input_value_sel = round.(Int, value.(adder_input_value_sel; result=i)),

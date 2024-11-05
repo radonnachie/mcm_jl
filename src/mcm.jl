@@ -24,29 +24,41 @@ function sort_by_component_count!(coeffs::Vector{Int})
     )
 end
 
+function number_of_adders_minmax(coeffs::Vector{UInt})::Tuple{Int, Int}
+	if length(coeffs) == 0
+		return 0
+	end
+	comp_counts = count_components.(csd.(coeffs))
+	l = ceil.(Int, log2.(comp_counts))
+	min_adders = l[1]
+	if length(l) > 1 
+		min_adders += sum(
+			max(1, ceil(log2(comp_counts[i+1]/comp_counts[i])))
+			for i in 1:length(l)-1
+		)
+	end
+	max_adders = sum(comp_counts .- 1)
+	return min_adders, max_adders
+end
+
 function mcm!(
     model::Model,
-    constant_multiples::Vector{Int}
-    ;
-    nof_adders::Int = 7,
-    nof_adder_inputs::Int = 2,
-    data_bit_width::Int = 10,
-    maximum_shift::Union{Nothing, Int} = nothing,
-    objective::ObjectiveMCM = MinAdderCountPlusMaxAdderDepth
+    constant_multiples::Vector{Int},
+	param::MCMParam
 )::Vector{ResultsMCM}
-	maximum_value = 2^data_bit_width
+	maximum_value = 2^param.data_bit_width
 
 	nof_constant_multiples = length(constant_multiples)
 	nof_unique_constant_multiples = length(unique(constant_multiples))
 	
 	input_sign_values = [-1, 1]
 	nof_input_sign_values = length(input_sign_values)
-	
-    if isnothing(maximum_shift)
-        maximum_shift = ceil(Int, log2(maximum(constant_multiples)))
-    end
-	input_shift_values = [2^e for e in 0:maximum_shift]
+
+	input_shift_values = [2^e for e in 0:param.maximum_shift]
 	nof_input_shift_values = length(input_shift_values)
+
+	nof_adders = param.max_nof_adders
+	nof_adder_inputs = param.nof_adder_inputs
 
 	# Adders have outputs.
 	@variable(model,
@@ -69,6 +81,16 @@ function mcm!(
 	for v in 1:nof_constant_multiples
 		adder_output_value_sel[v,nof_adders-nof_constant_multiples+v] = true
 	end
+	## The adders are enabled
+	@variable(model,
+		adder_enables[
+			1:nof_adders
+		],
+	Bin)
+	### Constrain last N to always be enabled
+	@constraint(model, [a = nof_adders-(nof_constant_multiples-1):nof_adders],
+		adder_enables[a] == 1
+	)
 
 	# Each adder input has 3 factors: sign, shift and value
 	## the shift*value product is captured by indicator constraints in `input_shifted`
@@ -81,7 +103,7 @@ function mcm!(
 	Int)
 
 	# Each adder input is the product of (sign, shift, value)
-	## The adder input value results from an indicator constraint on adder outputs
+	## The adder input value comes from preceding-adders' outputs
 	@variable(model,
 		adder_input_value_sel[
 			0:nof_adders,
@@ -89,18 +111,26 @@ function mcm!(
 			1:nof_adders
 		],
 	Bin)
+	### enabled adders must have each input enabled
 	@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
-		sum(adder_input_value_sel[s, i, a] for s in 0:a-1) == 1
+		sum(adder_input_value_sel[s, i, a] for s in 0:a-1) == adder_enables[a]
 	)
 	@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
 		sum(adder_input_value_sel[s, i, a] for s in a:nof_adders) == 0
 	)
 	value_M = 2*maximum_value
 	@constraint(model, [s = 0:nof_adders, i = 1:nof_adder_inputs, a = 1:nof_adders],
-		adder_outputs[s] - value_M + adder_input_value_sel[s, i, a]*value_M <= adder_input_value[i, a]
+		adder_outputs[s] - (1 - adder_input_value_sel[s, i, a])*value_M <= adder_input_value[i, a]
 	)
 	@constraint(model, [s = 0:nof_adders, i = 1:nof_adder_inputs, a = 1:nof_adders],
-		adder_input_value[i, a] <= adder_outputs[s] + value_M - adder_input_value_sel[s, i, a]*value_M
+		adder_input_value[i, a] <= adder_outputs[s] + (1 - adder_input_value_sel[s, i, a])*value_M
+	)
+	### non-enabled adders have zero as input values
+	@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
+		0 - adder_enables[a]*value_M <= adder_input_value[i, a]
+	)
+	@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
+		adder_input_value[i, a] <= 0 + adder_enables[a]*value_M
 	)
 
 	## The input is selectively shifted, linearised indicator constraints on `input_shifted`
@@ -136,6 +166,10 @@ function mcm!(
 	@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
 		sum(adder_input_sign_sel[s, i, a] for s in 1:nof_input_sign_values) == 1
 	)
+	## At most one input negated
+	@constraint(model, [a = 1:nof_adders],
+		sum(adder_input_sign_sel[1, i, a] for i in 1:nof_adder_inputs) <= 1
+	)
 	sign_M = shifted_M
 	@constraint(model, [s = 1:nof_input_sign_values, i = 1:nof_adder_inputs, a =1:nof_adders],
 		adder_input_shifted[i, a]*input_sign_values[s] - (1 - adder_input_sign_sel[s, i, a])*sign_M <= adder_inputs[i, a]
@@ -145,38 +179,34 @@ function mcm!(
 	)
 
 	# Adder output is the sum of its inputs
-	@variable(model,
-		-maximum_value <= adder_results[
-			1:nof_adders
-		] <= maximum_value,
-	Int)
+	### When enabled, constrain output to sum
+	output_M = nof_adder_inputs*maximum_value
 	@constraint(model, [a = 1:nof_adders],
-		adder_results[a] == sum(adder_inputs[i, a] for i in 1:nof_adder_inputs)
-	)
-	## The outputs are gated to effectively disable some adders
-	@variable(model,
-		adder_enables[
-			1:nof_adders
-		],
-	Bin)
-	### Constrain last N to always be enabled
-	@constraint(model, [a = nof_adders-(nof_constant_multiples-1):nof_adders],
-		adder_enables[a] == 1
-	)
-	### When enabled, constrain to result
-	output_M = 2*maximum_value
-	@constraint(model, [a = 1:nof_adders],
-		adder_results[a] - (1 - adder_enables[a])*output_M <= adder_outputs[a]
+		sum(adder_inputs[i, a] for i in 1:nof_adder_inputs) - (1 - adder_enables[a])*output_M <= adder_outputs[a]
 	)
 	@constraint(model, [a = 1:nof_adders],
-		adder_outputs[a] <= adder_results[a] + (1 - adder_enables[a])*output_M
+		adder_outputs[a] <= sum(adder_inputs[i, a] for i in 1:nof_adder_inputs) + (1 - adder_enables[a])*output_M
 	)
-	### When disabled, constrain to 0
+	### When disabled, constrain output to 0
 	@constraint(model, [a = 1:nof_adders],
 		0 - adder_enables[a]*output_M <= adder_outputs[a]
 	)
 	@constraint(model, [a = 1:nof_adders],
 		adder_outputs[a] <= 0 + adder_enables[a]*output_M
+	)
+	## adder outputs must be odd, when enabled (zero when not enabled)
+	@variable(model,
+		-maximum_value <= adder_result_oddity[
+			1:nof_adders
+		] <= maximum_value,
+	Int)
+	@constraint(model, [a = 1:nof_adders],
+		adder_outputs[a] == 2*adder_result_oddity[a] + adder_enables[a]
+	)
+
+	## Each non-output adder is either used as an input or is not enabled
+	@constraint(model, [a = 1:nof_adders-nof_constant_multiples],
+		sum(adder_input_value_sel[a, i, s] for s in a+1:nof_adders, i in 1:nof_adder_inputs) <= adder_enables[a]*nof_adders
 	)
 
 	## enumerate the depth of the adders
@@ -242,24 +272,24 @@ function mcm!(
 	@constraint(model, adder_depth_max <= adder_depth_limit)
 
 	## limit adder count
-	@variable(model, nof_unique_constant_multiples <= adder_enable_limit <= nof_adders, Int)
+	@variable(model, param.min_nof_adders <= adder_enable_limit <= nof_adders, Int)
 	@constraint(model, sum(adder_enables) <= adder_enable_limit)
 
 	## sum(adder_depth) is between 1*unique_coeff and sum(nof_adders, nof_adders-1, ... 1)
-	@variable(model, nof_unique_constant_multiples <= adder_depth_sum <= (nof_adders+1)*nof_adders/2, Int)
+	@variable(model, param.min_nof_adders <= adder_depth_sum <= (nof_adders+1)*nof_adders/2, Int)
 	@constraint(model, adder_depth_sum == sum(adder_depth))
 
 	# @objective(model, Min, sum(adder_depth))
-    if objective == MinAdderCount
+    if param.objective == MinAdderCount
 	    @objective(model, Min, adder_enable_limit)
     end
-    if objective == MinMaxAdderDepth
+    if param.objective == MinMaxAdderDepth
         @objective(model, Min, adder_depth_limit)
     end
-    if objective == MinAdderCountPlusMaxAdderDepth
+    if param.objective == MinAdderCountPlusMaxAdderDepth
 	    @objective(model, Min, adder_enable_limit + adder_depth_limit)
     end
-    if objective == MinAdderDepthSum
+    if param.objective == MinAdderDepthSum
 	    @objective(model, Min, adder_depth_sum)
     end
 	
@@ -286,7 +316,7 @@ function mcm!(
             input_value_sel = round.(Int, value.(adder_input_value_sel; result=i)),
             input_shift_sel = round.(Int, value.(adder_input_shift_sel; result=i)),
             inputs = floor.(Int, value.(adder_inputs; result=i)),
-            results = floor.(Int, value.(adder_results; result=i)),
+            results = zeros(Int, nof_adders),
             enables = round.(Int, value.(adder_enables; result=i)),
             depth = floor.(Int, value.(adder_depth; result=i)),
             input_depths = floor.(Int, value.(adder_input_depths; result=i)),

@@ -21,12 +21,11 @@ function get_coefficient_roots(coeffs::Vector{Int})::Vector{Int}
     )
 end
 
-
 benchmarks = readBenchmarkDetails("/work/data/benchmarks.csv")
 
 param = GurobiParam(
     TimeLimit=300,
-    Presolve=1,
+    Presolve=0,
     IntegralityFocus=1,
     MIPFocus=1, # https://www.gurobi.com/documentation/current/refman/mipfocus.html#parameter:MIPFocus
     ConcurrentMIP=4
@@ -42,18 +41,25 @@ for bench in benchmarks
             )
 
             coeff_roots = get_coefficient_roots(bench.coefficients)
+            min_adders, max_adders = number_of_adders_minmax(UInt.(coeff_roots))
 
-            max_nof_adders = sum(count_components.(
-                csd.(UInt.(abs.(bench.unique_coefficients)))
-            ))
+            bit_width = ceil(Int, log2(maximum(coeff_roots)))
+            mcm_param = MCMParam(
+                min_nof_adders=min_adders,
+                max_nof_adders=max_adders,
+                nof_adder_inputs=2,
+                data_bit_width=bit_width,
+                maximum_shift=bit_width,
+                objective=obj,
+            )
+
+            println("\n$(bench.name): $(mcm_param): $(coeff_roots)")
 
             ts_start = time_ns()
             results = mcm!(
                 model,
-                coeff_roots;
-                nof_adders=max_nof_adders,
-                data_bit_width=ceil(Int, log2(maximum(coeff_roots))),
-                objective=obj
+                coeff_roots,
+                mcm_param
             )
             ts_end = time_ns()
             @show results
@@ -64,7 +70,7 @@ for bench in benchmarks
                         timestamp=Dates.now(),
                         benchmark_name=bench.name,
                         gurobi_parameters=param,
-                        objective=obj,
+                        mcm_parameters=mcm_param,
                         elapsed_ns=ts_end-ts_start,
                     ) => results
                 )

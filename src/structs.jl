@@ -27,6 +27,27 @@ end
     MinAdderDepthSum
 end
 
+@kwdef struct MCMParam
+    min_nof_adders::Int
+    max_nof_adders::Int
+    nof_adder_inputs::Int
+    data_bit_width::Int
+    maximum_shift::Int
+    objective::ObjectiveMCM = MinAdderCountPlusMaxAdderDepth
+end
+
+function Base.show(io::IO, r::MCMParam)
+    @printf(io, 
+        "MCMParam(%d <= N_a <= %d (%d inputs), W=%d, << <=%d, %s)",
+        r.min_nof_adders,
+        r.max_nof_adders,
+        r.nof_adder_inputs,
+        r.data_bit_width,
+        r.maximum_shift,
+        r.objective
+    )
+end
+
 @kwdef struct ResultsMCM
     result_index::UInt
     adder_count::Int
@@ -59,7 +80,7 @@ end
     timestamp::DateTime
     benchmark_name::String
     gurobi_parameters::GurobiParam
-    objective::ObjectiveMCM
+    mcm_parameters::MCMParam
     elapsed_ns::UInt64
 end
 
@@ -69,7 +90,7 @@ function Base.show(io::IO, r::ResultsKey)
         r.timestamp,
         r.benchmark_name,
         r.gurobi_parameters,
-        r.objective,
+        r.mcm_parameters,
         r.elapsed_ns/1e9
     )
 end

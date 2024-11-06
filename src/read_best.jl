@@ -43,19 +43,32 @@ for f in readdir("/work/")
     end
 end
 
+benchmark_names = [bench.name for bench in readBenchmarkDetails("/work/data/benchmarks.csv")]
+sort!(benchmark_names)
+
 println()
 println("Benchmarks Solved In:\n"*("-"^20))
 open("/work/resultsummary_benchsolutions.txt", "w") do fio
-    for kv in benchmarks_solvedin
-        println(kv)
-        @printf(fio, "%s => %s\n", kv.first, kv.second)
+    for benchname in benchmark_names
+        if !(haskey(benchmarks_solvedin, benchname))
+            @printf(fio, "%s => %s\n", benchname, nothing)
+            continue
+        end
+        entry = benchmarks_solvedin[benchname]
+        println(benchname => entry)
+        @printf(fio, "%s => %s\n", benchname, entry)
     end
 end
 
 println("Best Results\n"*("-"^20))
 open("/work/resultsummary_bestresults.txt", "w") do fio
-    for kv in bench_best_resultpairs
-        println(kv)
-        @printf(fio, "%s => %s\n", kv.first, kv.second)
+    for benchname in benchmark_names
+        if !(haskey(bench_best_resultpairs, benchname))
+            @printf(fio, "%s => %s\n", benchname, nothing)
+            continue
+        end
+        entry = bench_best_resultpairs[benchname]
+        println(benchname => entry)
+        @printf(fio, "%s => %s\n", benchname, entry)
     end
 end

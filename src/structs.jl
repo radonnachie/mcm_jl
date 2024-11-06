@@ -81,16 +81,18 @@ end
     benchmark_name::String
     gurobi_parameters::GurobiParam
     mcm_parameters::MCMParam
+    solved_fully::Bool
     elapsed_ns::UInt64
 end
 
 function Base.show(io::IO, r::ResultsKey)
     @printf(io, 
-        "ResultsKey(%s @%s, with %s, %s in %0.3f s)",
+        "ResultsKey(%s @%s, with %s, %s in %0.3f s (%sSolved))",
         r.timestamp,
         r.benchmark_name,
         r.gurobi_parameters,
         r.mcm_parameters,
-        r.elapsed_ns/1e9
+        r.elapsed_ns/1e9,
+        r.solved_fully ? "" : "Not "
     )
 end

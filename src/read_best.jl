@@ -23,14 +23,19 @@ for f in readdir("/work/")
 
                 for (i,r) in enumerate(kp.second)
                     if !haskey(bench_best_resultpairs, benchname)
-                        bench_best_resultpairs[benchname] = (kp.first => r)
+                        bench_best_resultpairs[benchname] = ((f, kp.first) => r)
                     else
                         best_result = bench_best_resultpairs[benchname].second
                         best_obj = best_result.depth_max + best_result.adder_count
                         this_obj = r.depth_max + r.adder_count
-                        if best_obj > this_obj
-                            bench_best_resultpairs[benchname] = ((f, kp.first) => r)
+                        if best_obj < this_obj
+                            continue
                         end
+                        if best_obj == this_obj && best_result.depth_max <= r.depth_max
+                            continue
+                        end
+                        
+                        bench_best_resultpairs[benchname] = ((f, kp.first) => r)
                     end
                 end
             end

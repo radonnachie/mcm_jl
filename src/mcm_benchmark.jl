@@ -71,6 +71,7 @@ for bench in benchmarks
                         benchmark_name=bench.name,
                         gurobi_parameters=param,
                         mcm_parameters=mcm_param,
+                        solved_fully=is_solved_and_feasible(model),
                         elapsed_ns=ts_end-ts_start,
                     ) => results
                 )

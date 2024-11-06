@@ -50,19 +50,20 @@ function mcm!(
 
 	nof_constant_multiples = length(constant_multiples)
 	nof_unique_constant_multiples = length(unique(constant_multiples))
-	
+
 	input_sign_values = [-1, 1]
 	nof_input_sign_values = length(input_sign_values)
 
 	input_shift_values = [2^e for e in 0:param.maximum_shift]
-	nof_input_shift_values = length(input_shift_values)
+	right_shift_values = [2.0^(-e) for e in 0:param.maximum_shift]
+	nof_shift_values = length(input_shift_values)
 
 	nof_adders = param.max_nof_adders
 	nof_adder_inputs = param.nof_adder_inputs
 
 	# Adders have outputs.
 	@variable(model,
-		-maximum_value <= adder_outputs[0:nof_adders] <= maximum_value,
+		0 <= adder_outputs[0:nof_adders] <= maximum_value,
 	Int)
 	## A psuedo output for a static, non-existent adder is set to 1
 	@constraint(model, adder_outputs[0] == 1)
@@ -95,8 +96,9 @@ function mcm!(
 	# Each adder input has 3 factors: sign, shift and value
 	## the shift*value product is captured by indicator constraints in `input_shifted`
 	## and then the final product is captured by indicator constraints in `input_value`
+	max_shift_factor = maximum(input_shift_values)
 	@variable(model,
-		-maximum_value <= adder_input_shifted[1:nof_adder_inputs, 1:nof_adders] <= maximum_value,
+		-max_shift_factor*maximum_value <= adder_input_shifted[1:nof_adder_inputs, 1:nof_adders] <= max_shift_factor*maximum_value,
 	Int)
 	@variable(model,
 		-maximum_value <= adder_input_value[1:nof_adder_inputs, 1:nof_adders] <= maximum_value,
@@ -136,22 +138,34 @@ function mcm!(
 	## The input is selectively shifted, linearised indicator constraints on `input_shifted`
 	@variable(model,
 		adder_input_shift_sel[
-			1:nof_input_shift_values,
+			1:nof_shift_values,
 			1:nof_adder_inputs,
 			1:nof_adders
 		],
 	Bin)
-	@constraint(model, [i = 1:nof_adder_inputs, a =1:nof_adders],
-		sum(adder_input_shift_sel[s, i, a] for s in 1:nof_input_shift_values) == 1
+	@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
+		sum(adder_input_shift_sel[s, i, a] for s in 1:nof_shift_values) == 1
 	)
+	## for the output to be odd, there must be an odd number of non-shifted inputs (which are all odd) 
+	### constrain one input to never be shifted
+	@constraint(model, [a = 1:nof_adders],
+		adder_input_shift_sel[1, 1, a] == 1
+	)
+	## if the output is even (an even number of inputs were not shifted), a right shift after the sum will be constrained to drop the low LSBs
+	@variable(model, 0 <= adder_input_noshift_sel_oddity[1:nof_adders] <= nof_adder_inputs, Int)
+	@variable(model, adder_input_noshift_sel_is_odd[1:nof_adders], Bin)
+	@constraint(model, [a = 1:nof_adders],
+		sum(adder_input_shift_sel[1, i, a] for i in 1:nof_adder_inputs) == 2*adder_input_noshift_sel_oddity[a]+adder_input_noshift_sel_is_odd[a]
+	)
+
 	shifted_M = 2*maximum_value*maximum(input_shift_values)
-	@constraint(model, [s = 1:nof_input_shift_values, i = 1:nof_adder_inputs, a =1:nof_adders],
+	@constraint(model, [s = 1:nof_shift_values, i = 1:nof_adder_inputs, a = 1:nof_adders],
 		adder_input_value[i,a]*input_shift_values[s] - (1 - adder_input_shift_sel[s, i, a])*shifted_M <= adder_input_shifted[i, a]
 	)
-	@constraint(model, [s = 1:nof_input_shift_values, i = 1:nof_adder_inputs, a =1:nof_adders],
+	@constraint(model, [s = 1:nof_shift_values, i = 1:nof_adder_inputs, a = 1:nof_adders],
 		adder_input_shifted[i, a] <= adder_input_value[i,a]*input_shift_values[s] + (1 - adder_input_shift_sel[s, i, a])*shifted_M
 	)
-	
+
 	## The shifted input is selectively signed, linearised indicator constraints on `inputs`
 	@variable(model,
 		-maximum_value <= adder_inputs[1:nof_adder_inputs, 1:nof_adders] <= maximum_value,
@@ -171,37 +185,55 @@ function mcm!(
 		sum(adder_input_sign_sel[1, i, a] for i in 1:nof_adder_inputs) <= 1
 	)
 	sign_M = shifted_M
-	@constraint(model, [s = 1:nof_input_sign_values, i = 1:nof_adder_inputs, a =1:nof_adders],
+	@constraint(model, [s = 1:nof_input_sign_values, i = 1:nof_adder_inputs, a = 1:nof_adders],
 		adder_input_shifted[i, a]*input_sign_values[s] - (1 - adder_input_sign_sel[s, i, a])*sign_M <= adder_inputs[i, a]
 	)
-	@constraint(model, [s = 1:nof_input_sign_values, i = 1:nof_adder_inputs, a =1:nof_adders],
+	@constraint(model, [s = 1:nof_input_sign_values, i = 1:nof_adder_inputs, a = 1:nof_adders],
 		adder_inputs[i, a] <= adder_input_shifted[i, a]*input_sign_values[s] + (1 - adder_input_sign_sel[s, i, a])*sign_M
 	)
 
 	# Adder output is the sum of its inputs
-	### When enabled, constrain output to sum
-	output_M = nof_adder_inputs*maximum_value
+	@variable(model, 0 <= adder_sums[1:nof_adders] <= max_shift_factor*maximum_value)
+	## When enabled, constrain output to sum
+	sum_M = nof_adder_inputs*max_shift_factor*maximum_value
 	@constraint(model, [a = 1:nof_adders],
-		sum(adder_inputs[i, a] for i in 1:nof_adder_inputs) - (1 - adder_enables[a])*output_M <= adder_outputs[a]
+		sum(adder_inputs[i, a] for i in 1:nof_adder_inputs) - (1 - adder_enables[a])*sum_M <= adder_sums[a]
 	)
 	@constraint(model, [a = 1:nof_adders],
-		adder_outputs[a] <= sum(adder_inputs[i, a] for i in 1:nof_adder_inputs) + (1 - adder_enables[a])*output_M
+		adder_sums[a] <= sum(adder_inputs[i, a] for i in 1:nof_adder_inputs) + (1 - adder_enables[a])*sum_M
 	)
-	### When disabled, constrain output to 0
+	## When disabled, constrain output to 0
 	@constraint(model, [a = 1:nof_adders],
-		0 - adder_enables[a]*output_M <= adder_outputs[a]
+		0 - adder_enables[a]*sum_M <= adder_sums[a]
 	)
 	@constraint(model, [a = 1:nof_adders],
-		adder_outputs[a] <= 0 + adder_enables[a]*output_M
+		adder_sums[a] <= 0 + adder_enables[a]*sum_M
 	)
-	## adder outputs must be odd, when enabled (zero when not enabled)
+	## adder sums must be odd, when enabled (zero when not enabled)
 	@variable(model,
-		-maximum_value <= adder_result_oddity[
+		0 <= adder_sum_oddity[
 			1:nof_adders
-		] <= maximum_value,
+		] <= nof_adder_inputs*max_shift_factor*maximum_value/2,
 	Int)
 	@constraint(model, [a = 1:nof_adders],
-		adder_outputs[a] == 2*adder_result_oddity[a] + adder_enables[a]
+		adder_sums[a] == 2*adder_sum_oddity[a] + adder_enables[a]
+	)
+	## the sum can be right shifted if it is even, so that all outputs are odd
+	@variable(model, adder_sums_right_shift_sel[1:nof_shift_values, 1:nof_adders], Bin)
+	@constraint(model, [a = 1:nof_adders],
+		sum(adder_sums_right_shift_sel[s, a] for s in 1:nof_shift_values) == 1
+	)
+	## if the sum is odd (an odd number of inputs were shifted), there must be a zero right shift
+	@constraint(model, [a = 1:nof_adders],
+		adder_sums_right_shift_sel[1, a] == adder_input_noshift_sel_is_odd[a]
+	)
+
+	## The output is the right shifted sum
+	@constraint(model, [s = 1:nof_shift_values, a = 1:nof_adders],
+		adder_sums[a]*right_shift_values[s] - (1 - adder_sums_right_shift_sel[s, a])*sum_M <= adder_outputs[a]
+	)
+	@constraint(model, [s = 1:nof_shift_values, a = 1:nof_adders],
+		adder_outputs[a] <= adder_sums[a]*right_shift_values[s] + (1 - adder_sums_right_shift_sel[s, a])*sum_M
 	)
 
 	## Each non-output adder is either used as an input or is not enabled
@@ -280,47 +312,47 @@ function mcm!(
 	@constraint(model, adder_depth_sum == sum(adder_depth))
 
 	# @objective(model, Min, sum(adder_depth))
-    if param.objective == MinAdderCount
-	    @objective(model, Min, adder_enable_limit)
-    end
-    if param.objective == MinMaxAdderDepth
-        @objective(model, Min, adder_depth_limit)
-    end
-    if param.objective == MinAdderCountPlusMaxAdderDepth
-	    @objective(model, Min, adder_enable_limit + adder_depth_limit)
-    end
-    if param.objective == MinAdderDepthSum
-	    @objective(model, Min, adder_depth_sum)
-    end
-	
+	if param.objective == MinAdderCount
+		@objective(model, Min, adder_enable_limit)
+	end
+	if param.objective == MinMaxAdderDepth
+		@objective(model, Min, adder_depth_limit)
+	end
+	if param.objective == MinAdderCountPlusMaxAdderDepth
+		@objective(model, Min, adder_enable_limit + adder_depth_limit)
+	end
+	if param.objective == MinAdderDepthSum
+		@objective(model, Min, adder_depth_sum)
+	end
+
 	optimize!(model)
 
-    @show is_solved_and_feasible(model)
-    @show result_count(model)
+	@show is_solved_and_feasible(model)
+	@show result_count(model)
 
-    results = Vector{ResultsMCM}()
-    
-    all_ao = [value.(adder_outputs;result=i) for i in 1:result_count(model)]
-    unique_ao = unique(all_ao)
-    unique_result_indices = [findfirst(x->x==un, all_ao) for un in unique_ao]
+	results = Vector{ResultsMCM}()
 
-    for i in unique_result_indices
-        push!(results, ResultsMCM(
-            result_index = i,
-            adder_count = sum(round.(Int, value.(adder_enables; result=i))),
-            depth_max = floor(Int, value(adder_depth_max; result=i)),
-            outputs = floor.(Int, value.(adder_outputs; result=i)),
-            output_value_sel = adder_output_value_sel,
-            input_shifted = floor.(Int, value.(adder_input_shifted; result=i)),
-            input_value = floor.(Int, value.(adder_input_value; result=i)),
-            input_value_sel = round.(Int, value.(adder_input_value_sel; result=i)),
-            input_shift_sel = round.(Int, value.(adder_input_shift_sel; result=i)),
-            inputs = floor.(Int, value.(adder_inputs; result=i)),
-            results = zeros(Int, nof_adders),
-            enables = round.(Int, value.(adder_enables; result=i)),
-            depth = floor.(Int, value.(adder_depth; result=i)),
-            input_depths = floor.(Int, value.(adder_input_depths; result=i)),
-        ))
-    end
-    results
+	all_ao = [unique(value.(adder_outputs;result=i)) for i in 1:result_count(model)]
+	unique_ao = unique(all_ao)
+	unique_result_indices = [findfirst(x->x==un, all_ao) for un in unique_ao]
+
+	for i in unique_result_indices
+		push!(results, ResultsMCM(
+			result_index = i,
+			adder_count = sum(round.(Int, value.(adder_enables; result=i))),
+			depth_max = floor(Int, value(adder_depth_max; result=i)),
+			outputs = floor.(Int, value.(adder_outputs; result=i)),
+			output_value_sel = adder_output_value_sel,
+			input_shifted = floor.(Int, value.(adder_input_shifted; result=i)),
+			input_value = floor.(Int, value.(adder_input_value; result=i)),
+			input_value_sel = round.(Int, value.(adder_input_value_sel; result=i)),
+			input_shift_sel = round.(Int, value.(adder_input_shift_sel; result=i)),
+			inputs = floor.(Int, value.(adder_inputs; result=i)),
+			results = zeros(Int, nof_adders),
+			enables = round.(Int, value.(adder_enables; result=i)),
+			depth = floor.(Int, value.(adder_depth; result=i)),
+			input_depths = floor.(Int, value.(adder_input_depths; result=i)),
+		))
+	end
+	results
 end

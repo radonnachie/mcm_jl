@@ -78,7 +78,7 @@ end
 reference_results = getBestReferenceResults("/work/data/reference_results.csv")
 println("\nResults Comparison\n"*("-"^20))
 open("/work/resultsummary_comparison.csv", "w") do fio
-    @printf(fio, "benchmark_name,ref_nof_adders,ref_adder_depth,our_nof_adders,our_adder_depth,comparison\n")
+    @printf(fio, "benchmark_name,ref_nof_adders,ref_adder_depth,ref_solved,our_nof_adders,our_adder_depth,our_solved,comparison\n")
     for benchname in benchmark_names
         no_result = !(haskey(bench_best_resultpairs, benchname))
         no_refresult = !(haskey(reference_results, benchname))
@@ -87,55 +87,65 @@ open("/work/resultsummary_comparison.csv", "w") do fio
         
         if no_refresult
             print("Nothing")
-            csv_line = csv_line*",,"
+            csv_line = csv_line*",,,"
         else
             r = reference_results[benchname]
             print(@sprintf("ReferenceResult(N_a=%03d, AD=%03d)", r.nof_adders, r.adder_depth))
-            csv_line = @sprintf("%s,%d,%d", csv_line, r.nof_adders, r.adder_depth)
+            csv_line = @sprintf("%s,%d,%d,%s", csv_line, r.nof_adders, r.adder_depth, r.solved)
         end
         print("\tVS\t")
         if no_result
             print("Nothing")
-            csv_line = csv_line*",,"
+            csv_line = csv_line*",,,"
         else
             r = bench_best_resultpairs[benchname].second
+            rkey = bench_best_resultpairs[benchname].first[2]
             print(@sprintf("ResultMCM(N_a=%03d, AD=%03d)", r.adder_count, r.depth_max))
-            csv_line = @sprintf("%s,%d,%d", csv_line, r.adder_count, r.depth_max)
+            csv_line = @sprintf("%s,%d,%d,%s", csv_line, r.adder_count, r.depth_max, rkey.solved_fully)
         end
-        
+
+        comp_str = ""
         if no_result && no_refresult
-            print("\texcused")
-            csv_line = csv_line*",excused"
+            comp_str = "excused"
         elseif no_result
-            print("\tmissing")
-            csv_line = csv_line*",missing"
+            comp_str = "missing"
+            if reference_results[benchname].solved
+                comp_str = comp_str*" solved"
+            end
         elseif no_refresult
-                print("\tnovel")
-                csv_line = csv_line*",novel"
+            comp_str = "novel"
+            if bench_best_resultpairs[benchname].first[2].solved_fully
+                comp_str = "solved "*comp_str
+            end
         else
             ref = reference_results[benchname]
             res = bench_best_resultpairs[benchname].second
+
+            ref_solved = ref.solved
+            res_solved = bench_best_resultpairs[benchname].first[2].solved_fully
+
             ref_obj = ref.nof_adders + ref.adder_depth
             res_obj = res.adder_count + res.depth_max
 
             if ref_obj < res_obj
-                print("\tworse")
-                csv_line = csv_line*",worse"
+                comp_str = "worse"
             elseif ref_obj > res_obj
-                print("\tbetter")
-                csv_line = csv_line*",better"
+                comp_str = "better"
+            ## lower rungs are objectively equal
             elseif ref.adder_depth > res.depth_max
-                print("\tshallower")
-                csv_line = csv_line*",shallower"
+                comp_str = "shallower"
             elseif ref.nof_adders > res.adder_count
-                print("\tnarrower")
-                csv_line = csv_line*",narrower"
+                comp_str = "narrower"
             else
-                print("\tequal")
-                csv_line = csv_line*",equal"
+                comp_str = "equal"
             end
 
+            if ref_obj == res_obj && (!ref_solved && res_solved)
+                comp_str = "solved "*comp_str
+            end
         end
+        print("\t$(comp_str)")
+        csv_line = csv_line*","*comp_str
 
         println()
 

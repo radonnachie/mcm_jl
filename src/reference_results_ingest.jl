@@ -6,6 +6,7 @@ struct ReferenceResult
     # method::String
     min_ad::Bool
     time_s::Float64
+    solved::Bool
     nof_adders::Int
     adder_depth::Int
     # wl_in
@@ -21,9 +22,10 @@ end
 
 function Base.show(io::IO, r::ReferenceResult)
     Printf.@printf(io,
-        "ReferenceResult(%s in %0.3f s, Min(%s), N_a=%d, AD=%d)",
+        "ReferenceResult(%s in %0.3f s (%sSolved), Min(%s), N_a=%d, AD=%d)",
         r.benchmark_name,
         r.time_s,
+        r.solved ? "" : "Not ",
         r.min_ad ? "AD" : "N_a+AD",
         r.nof_adders,
         r.adder_depth
@@ -40,9 +42,11 @@ function readReferenceResults(filepath::String)::Vector{ReferenceResult}
                 continue
             end
 
+            solved = true
             time_str = strip(line_data[5])
             while time_str[end] == '*'
                 time_str = time_str[1:end-1]
+                solved = false
             end
 
             push!(refs,
@@ -50,6 +54,7 @@ function readReferenceResults(filepath::String)::Vector{ReferenceResult}
                     line_data[1], # benchmark_name
                     strip(line_data[4]) == "true", # min_ad
                     parse(Float64, time_str), # time_s
+                    solved, # solved
                     parse(Int, strip(line_data[6])), # nof_adders
                     parse(Int, strip(line_data[7])), # adder_depth
                 )

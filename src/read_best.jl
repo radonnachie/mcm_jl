@@ -140,8 +140,11 @@ open("/work/resultsummary_comparison.csv", "w") do fio
                 comp_str = "equal"
             end
 
-            if ref_obj == res_obj && (!ref_solved && res_solved)
+            if !ref_solved && res_solved
                 comp_str = "solved "*comp_str
+            end
+            if ref_solved && !res_solved
+                comp_str = "unsolved "*comp_str
             end
         end
         print("\t$(comp_str)")

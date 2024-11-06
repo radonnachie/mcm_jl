@@ -24,11 +24,11 @@ end
 benchmarks = readBenchmarkDetails("/work/data/benchmarks.csv")
 
 param = GurobiParam(
-    TimeLimit=300,
-    Presolve=0,
+    TimeLimit=900,
+    Presolve=1,
     IntegralityFocus=1,
     MIPFocus=1, # https://www.gurobi.com/documentation/current/refman/mipfocus.html#parameter:MIPFocus
-    ConcurrentMIP=4
+    ConcurrentMIP=6
 )
 
 now_str = Dates.format(Dates.now(), "Y-m-d_H-M-S")

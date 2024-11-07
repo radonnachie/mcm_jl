@@ -18,22 +18,22 @@ function getGurobiModelMILP(;
 end
 
 function sort_by_component_count!(coeffs::Vector{Int})
-    sort!(
-        coeffs,
+    sort(
+        sort(coeffs),
         by=x->count_components(csd(UInt(abs(x))))
     )
 end
 
-function number_of_adders_minmax(coeffs::Vector{UInt})::Tuple{Int, Int}
+function number_of_adders_minmax(coeffs::Vector{UInt}; nof_adder_inputs::Int=2)::Tuple{Int, Int}
 	if length(coeffs) == 0
-		return 0
+		return 0, 0
 	end
 	comp_counts = count_components.(csd.(coeffs))
-	l = ceil.(Int, log2.(comp_counts))
+	l = ceil.(Int, log.(nof_adder_inputs, comp_counts))
 	min_adders = l[1]
 	if length(l) > 1 
 		min_adders += sum(
-			max(1, ceil(log2(comp_counts[i+1]/comp_counts[i])))
+			max(1, ceil(log(nof_adder_inputs, comp_counts[i+1]/comp_counts[i])))
 			for i in 1:length(l)-1
 		)
 	end
@@ -55,7 +55,6 @@ function mcm!(
 	nof_input_sign_values = length(input_sign_values)
 
 	input_shift_values = [2^e for e in 0:param.maximum_shift]
-	right_shift_values = [2.0^(-e) for e in 0:param.maximum_shift]
 	nof_shift_values = length(input_shift_values)
 
 	nof_adders = param.max_nof_adders
@@ -194,8 +193,26 @@ function mcm!(
 
 	# Adder output is the sum of its inputs
 	@variable(model, 0 <= adder_sums[1:nof_adders] <= max_shift_factor*maximum_value)
-	## When enabled, constrain output to sum
 	sum_M = nof_adder_inputs*max_shift_factor*maximum_value
+	## Adder sums should be unique
+	@variable(model, adder_sum_equivalence_sel[1:nof_adders, 1:nof_adders], Bin)
+	@constraint(model, [a_other = 1:nof_adders, a = 1:nof_adders],
+		adder_sums[a_other] - (1-adder_sum_equivalence_sel[a_other, a])*sum_M <= adder_sums[a]
+	)
+	@constraint(model, [a_other = 1:nof_adders, a = 1:nof_adders],
+		adder_sums[a] <= adder_sums[a_other] + (1-adder_sum_equivalence_sel[a_other, a])*sum_M
+	)
+	@variable(model, 1 <= adder_sum_equivalents[1:nof_adders] <= nof_adders, Int)
+	@constraint(model, [a = 1:nof_adders],
+		adder_sum_equivalents[a] == sum(adder_sum_equivalence_sel[a_other, a] for a_other in 1:nof_adders)
+	)
+	# @constraint(model, [a = 1:nof_adders],
+	# 	1 <= adder_sum_equivalents[a]
+	# )
+	@constraint(model, [a = 1:nof_adders],
+		adder_sum_equivalents[a] <= 1 + (1 - adder_enables[a])*nof_adders
+	)
+	## When enabled, constrain output to sum
 	@constraint(model, [a = 1:nof_adders],
 		sum(adder_inputs[i, a] for i in 1:nof_adder_inputs) - (1 - adder_enables[a])*sum_M <= adder_sums[a]
 	)
@@ -209,15 +226,6 @@ function mcm!(
 	@constraint(model, [a = 1:nof_adders],
 		adder_sums[a] <= 0 + adder_enables[a]*sum_M
 	)
-	## adder sums must be odd, when enabled (zero when not enabled)
-	@variable(model,
-		0 <= adder_sum_oddity[
-			1:nof_adders
-		] <= nof_adder_inputs*max_shift_factor*maximum_value/2,
-	Int)
-	@constraint(model, [a = 1:nof_adders],
-		adder_sums[a] == 2*adder_sum_oddity[a] + adder_enables[a]
-	)
 	## the sum can be right shifted if it is even, so that all outputs are odd
 	@variable(model, adder_sums_right_shift_sel[1:nof_shift_values, 1:nof_adders], Bin)
 	@constraint(model, [a = 1:nof_adders],
@@ -230,10 +238,19 @@ function mcm!(
 
 	## The output is the right shifted sum
 	@constraint(model, [s = 1:nof_shift_values, a = 1:nof_adders],
-		adder_sums[a]*right_shift_values[s] - (1 - adder_sums_right_shift_sel[s, a])*sum_M <= adder_outputs[a]
+		adder_sums[a] - (1 - adder_sums_right_shift_sel[s, a])*max_shift_factor*sum_M <= adder_outputs[a]*input_shift_values[s]
 	)
 	@constraint(model, [s = 1:nof_shift_values, a = 1:nof_adders],
-		adder_outputs[a] <= adder_sums[a]*right_shift_values[s] + (1 - adder_sums_right_shift_sel[s, a])*sum_M
+		adder_outputs[a]*input_shift_values[s] <= adder_sums[a] + (1 - adder_sums_right_shift_sel[s, a])*max_shift_factor*sum_M
+	)
+	## adder outputs must be odd, when enabled (zero when not enabled)
+	@variable(model,
+		0 <= adder_output_oddity[
+			1:nof_adders
+		] <= nof_adder_inputs*max_shift_factor*maximum_value/2,
+	Int)
+	@constraint(model, [a = 1:nof_adders],
+		adder_outputs[a] == 2*adder_output_oddity[a] + adder_enables[a]
 	)
 
 	## Each non-output adder is either used as an input or is not enabled

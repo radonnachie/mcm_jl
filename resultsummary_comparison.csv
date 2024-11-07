@@ -43,8 +43,8 @@ JOHANSSON08_30,33,3,false,,,,missing
 JOHANSSON08_A5,6,3,true,6,3,false,unsolved equal
 JOHANSSON08_B5,7,3,true,7,3,false,unsolved equal
 KWENTUS97_11,3,3,true,3,3,true,equal
-KWENTUS97_15,4,3,true,5,3,false,unsolved worse
-KWENTUS97_47,20,2,false,,,,missing
+KWENTUS97_15,4,3,true,5,3,true,solved worse
+KWENTUS97_47,20,2,false,21,4,false,worse
 LAPLACIAN_3,3,3,true,3,3,true,equal
 LIM83A_36,5,1,true,5,1,true,equal
 LIM83_121,54,3,false,,,,missing
@@ -72,7 +72,7 @@ SHI11_S1_A,4,2,true,4,2,true,equal
 SHI11_S1_B,5,1,true,5,1,true,equal
 SHI11_S2,18,3,false,18,3,false,equal
 SHI11_X1,5,2,true,5,2,true,equal
-SHI11_Y1,6,4,true,7,3,false,unsolved shallower
+SHI11_Y1,6,4,true,7,3,true,shallower
 SHI11_Y2,10,4,false,11,3,false,shallower
 UNSHARP_3-1,4,2,true,4,2,true,equal
 UNSHARP_3-2,5,3,true,5,3,false,unsolved equal

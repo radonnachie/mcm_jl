@@ -32,7 +32,7 @@ for f in readdir("/work/")
                         if best_obj < this_obj
                             continue
                         end
-                        if best_obj == this_obj && best_result.depth_max <= r.depth_max
+                        if best_obj == this_obj && best_result.depth_max < r.depth_max
                             continue
                         end
                         
@@ -129,6 +129,9 @@ open("/work/resultsummary_comparison.csv", "w") do fio
 
             if ref_obj < res_obj
                 comp_str = "worse"
+                if ref_solved && res_solved
+                    comp_str = "solved "*comp_str
+                end
             elseif ref_obj > res_obj
                 comp_str = "better"
             ## lower rungs are objectively equal

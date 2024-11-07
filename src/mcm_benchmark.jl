@@ -8,11 +8,11 @@ include("$(@__DIR__)/benchmark_ingest.jl")
 benchmarks = readBenchmarkDetails("/work/data/benchmarks.csv")
 
 param = GurobiParam(
-    TimeLimit=900,
+    TimeLimit=600,
     Presolve=1,
     IntegralityFocus=1,
-    MIPFocus=1, # https://www.gurobi.com/documentation/current/refman/mipfocus.html#parameter:MIPFocus
-    ConcurrentMIP=6
+    MIPFocus=0, # https://www.gurobi.com/documentation/current/refman/mipfocus.html#parameter:MIPFocus
+    ConcurrentMIP=4
 )
 
 now_str = Dates.format(Dates.now(), "Y-m-d_H-M-S")

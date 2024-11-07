@@ -5,22 +5,6 @@ include("$(@__DIR__)/mcm.jl")
 include("$(@__DIR__)/csd.jl")
 include("$(@__DIR__)/benchmark_ingest.jl")
 
-function get_odd_factor(v::Int)::Int
-    while v != 0 && mod(v, 2) == 0
-        v = div(v, 2)
-    end
-    v
-end
-
-function get_coefficient_roots(coeffs::Vector{Int})::Vector{Int}
-    filter!(
-        x -> x > 1,
-        unique!(
-            get_odd_factor.(abs.(coeffs))
-        )
-    )
-end
-
 benchmarks = readBenchmarkDetails("/work/data/benchmarks.csv")
 
 param = GurobiParam(
@@ -40,8 +24,8 @@ for bench in benchmarks
                 param=param
             )
 
-            coeff_roots = get_coefficient_roots(bench.coefficients)
-            min_adders, max_adders = number_of_adders_minmax(UInt.(coeff_roots))
+            coeff_roots = preprocess_coefficients(bench.coefficients)
+            min_adders, max_adders = number_of_adders_minmax(UInt.(coeff_roots); nof_adder_inputs=2)
 
             bit_width = ceil(Int, log2(maximum(coeff_roots)))
             mcm_param = MCMParam(

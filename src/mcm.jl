@@ -17,11 +17,20 @@ function getGurobiModelMILP(;
     model
 end
 
-function sort_by_component_count!(coeffs::Vector{Int})
+function sort_by_component_count!(coeffs::Vector{Int})::Vector{Int}
     sort(
         sort(coeffs),
         by=x->count_components(csd(UInt(abs(x))))
     )
+end
+
+function preprocess_coefficients(coeffs::Vector{Int})::Vector{Int}
+    sort_by_component_count!(filter(
+        x -> x > 1,
+        unique(
+            get_odd_factor.(abs.(coeffs))
+        )
+    ))
 end
 
 function number_of_adders_minmax(coeffs::Vector{UInt}; nof_adder_inputs::Int=2)::Tuple{Int, Int}

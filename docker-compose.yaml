@@ -29,3 +29,10 @@ services:
     volumes:
       - .:/work
     command: julia ./src/read_best.jl
+  analyse:
+    container_name: analyse
+    build:
+      context: .
+    volumes:
+      - .:/work
+    command: julia ./src/meta_analysis.jl

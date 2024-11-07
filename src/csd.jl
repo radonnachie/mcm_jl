@@ -1,4 +1,4 @@
-function csd(v::UInt)
+function csd(v::UInt)::String
     b = reverse(bitstring(v))
     r = r"(1+10)" # match zero followed by two or more 1s
 
@@ -26,4 +26,73 @@ end
 
 function count_components(csd_bitstring::String)
     count(x!='0' for x in csd_bitstring)
+end
+
+function unique_subsections(csd_bitstrings::Vector{String}; nof_non_zero::Int=2)::Vector{String}
+    subs = Vector{String}()
+    for csd_str in csd_bitstrings
+        for sub in eachmatch(Regex("[^0]"*"0+[^0]"^(nof_non_zero-1)), csd_str; overlap=true)
+            if !(sub.match in subs)
+                push!(subs, sub.match)
+            end
+        end
+    end
+    subs
+end
+
+function csd2int(csd_str::String; big_endian=true)::Int
+    val = 0
+    bit_val = 1
+    for sbit in (big_endian ? reverse(csd_str) : csd_str)
+        if sbit == '+'
+            val += bit_val
+        elseif sbit == '-'
+            val -= bit_val
+        end
+        bit_val *= 2
+    end
+    val
+end
+
+function get_odd_factor(v::Int)::Int
+    while v != 0 && mod(v, 2) == 0
+        v = div(v, 2)
+    end
+    v
+end
+
+function number_of_adders_min(coeffs::Vector{UInt}; nof_adder_inputs::Int=2)::Int
+	if length(coeffs) == 0
+		return 0
+	end
+	comp_counts = count_components.(csd.(coeffs))
+	l = ceil.(Int, log.(nof_adder_inputs, comp_counts))
+	min_adders = l[1]
+	if length(l) > 1 
+		min_adders += sum(
+			max(1, ceil(log(nof_adder_inputs, comp_counts[i+1]/comp_counts[i])))
+			for i in 1:length(l)-1
+		)
+	end
+	return min_adders
+end
+
+function number_of_adders_max_ktree(coeffs::Vector{UInt}; nof_adder_inputs::Int=2)::Int
+	if length(coeffs) == 0
+		return 0
+	end
+	comp_counts = count_components.(csd.(coeffs))
+	return sum(ceil.(Int, (comp_counts .- 1) ./ (nof_adder_inputs-1)))
+end
+
+function number_of_adders_max_uniqueterms(coeffs::Vector{UInt}; nof_adder_inputs::Int=2)::Int
+	if length(coeffs) == 0
+		return 0
+	end
+    csds = String.(lstrip.(csd.(coeffs), '0'))
+    sub_csds = unique_subsections(csds; nof_non_zero=nof_adder_inputs)
+    sub_csd_ints = csd2int.(sub_csds)
+    append!(sub_csd_ints, Int.(coeffs))
+    sub_csd_ints = unique(abs.(sub_csd_ints))
+    return length(sub_csd_ints)
 end

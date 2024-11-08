@@ -9,3 +9,8 @@
 ### 3. Review Results
 - `docker compose up read_best`
 
+
+# Upper bound analysis
+
+nonzeropairs: min=0.4, mean=0.6403101, max=1.0, stdev=0.27276123
+uniqueterms: min=0.03448276, mean=0.4153989, max=1.6666666, stdev=0.334281

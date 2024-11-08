@@ -35,4 +35,4 @@ services:
       context: .
     volumes:
       - .:/work
-    command: julia ./src/meta_analysis.jl
+    command: julia ./src/upperbound_analysis.jl

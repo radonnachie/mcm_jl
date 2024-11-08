@@ -85,14 +85,23 @@ function number_of_adders_max_ktree(coeffs::Vector{UInt}; nof_adder_inputs::Int=
 	return sum(ceil.(Int, (comp_counts .- 1) ./ (nof_adder_inputs-1)))
 end
 
-function number_of_adders_max_uniqueterms(coeffs::Vector{UInt}; nof_adder_inputs::Int=2)::Int
+function get_unique_subterms(coeffs::Vector{UInt}; nof_non_zero::Int=2)::Vector{Int}
 	if length(coeffs) == 0
-		return 0
+		return []
 	end
     csds = String.(lstrip.(csd.(coeffs), '0'))
-    sub_csds = unique_subsections(csds; nof_non_zero=nof_adder_inputs)
+    sub_csds = unique_subsections(csds; nof_non_zero=nof_non_zero)
     sub_csd_ints = csd2int.(sub_csds)
+    unique(abs.(sub_csd_ints))
+end
+
+function number_of_adders_max_uniqueterms(coeffs::Vector{UInt}; nof_adder_inputs::Int=2)::Int
+    sub_csd_ints = get_unique_subterms(coeffs; nof_non_zero=nof_adder_inputs)
     append!(sub_csd_ints, Int.(coeffs))
-    sub_csd_ints = unique(abs.(sub_csd_ints))
-    return length(sub_csd_ints)
+    return length(unique(abs.(sub_csd_ints)))
+end
+
+function number_of_adders_max_nonzeropairs(coeffs::Vector{UInt}; nof_adder_inputs::Int=2)::Int
+	comp_counts = count_components.(csd.(coeffs))
+    return sum(ceil.(Int, comp_counts./nof_adder_inputs))
 end

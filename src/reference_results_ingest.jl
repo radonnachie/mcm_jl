@@ -1,36 +1,5 @@
 using Printf
-
-struct ReferenceResult
-    benchmark_name::String
-    # file_ag::String
-    # method::String
-    min_ad::Bool
-    time_s::Float64
-    solved::Bool
-    nof_adders::Int
-    adder_depth::Int
-    # wl_in
-    # onebit
-    # epsilon_max
-    # wl_out_full
-    # wl_out
-    # epsilon_frac
-    # luts
-    # delay
-    # power
-end
-
-function Base.show(io::IO, r::ReferenceResult)
-    Printf.@printf(io,
-        "ReferenceResult(%s in %0.3f s (%sSolved), Min(%s), N_a=%d, AD=%d)",
-        r.benchmark_name,
-        r.time_s,
-        r.solved ? "" : "Not ",
-        r.min_ad ? "AD" : "N_a+AD",
-        r.nof_adders,
-        r.adder_depth
-    )
-end
+include("$(@__DIR__)/structs.jl")
 
 function readReferenceResults(filepath::String)::Vector{ReferenceResult}
     refs = Vector{ReferenceResult}()

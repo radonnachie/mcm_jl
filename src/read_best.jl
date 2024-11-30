@@ -78,83 +78,18 @@ end
 reference_results = getBestReferenceResults("/work/data/reference_results.csv")
 println("\nResults Comparison\n"*("-"^20))
 open("/work/resultsummary_comparison.csv", "w") do fio
-    @printf(fio, "benchmark_name,ref_nof_adders,ref_adder_depth,ref_solved,our_nof_adders,our_adder_depth,our_solved,comparison\n")
+    first = true
     for benchname in benchmark_names
-        no_result = !(haskey(bench_best_resultpairs, benchname))
-        no_refresult = !(haskey(reference_results, benchname))
-        print(benchname, " => ")
-        csv_line = @sprintf("%s", benchname)
-        
-        if no_refresult
-            print("Nothing")
-            csv_line = csv_line*",,,"
-        else
-            r = reference_results[benchname]
-            print(@sprintf("ReferenceResult(N_a=%03d, AD=%03d)", r.nof_adders, r.adder_depth))
-            csv_line = @sprintf("%s,%d,%d,%s", csv_line, r.nof_adders, r.adder_depth, r.solved)
-        end
-        print("\tVS\t")
-        if no_result
-            print("Nothing")
-            csv_line = csv_line*",,,"
-        else
-            r = bench_best_resultpairs[benchname].second
-            rkey = bench_best_resultpairs[benchname].first[2]
-            print(@sprintf("ResultMCM(N_a=%03d, AD=%03d)", r.adder_count, r.depth_max))
-            csv_line = @sprintf("%s,%d,%d,%s", csv_line, r.adder_count, r.depth_max, rkey.solved_fully)
-        end
+        result = haskey(bench_best_resultpairs, benchname) ? SummarisedResultsMCM(
+            solved = bench_best_resultpairs[benchname].first[2].solved_fully,
+            nof_adders = bench_best_resultpairs[benchname].second.adder_count,
+            adder_depth = bench_best_resultpairs[benchname].second.depth_max,
+        ) : nothing
+        refresult = haskey(reference_results, benchname) ? SummarisedResultsMCM(reference_results[benchname]) : nothing
 
-        comp_str = ""
-        if no_result && no_refresult
-            comp_str = "excused"
-        elseif no_result
-            comp_str = "missing"
-            if reference_results[benchname].solved
-                comp_str = comp_str*" solved"
-            end
-        elseif no_refresult
-            comp_str = "novel"
-            if bench_best_resultpairs[benchname].first[2].solved_fully
-                comp_str = "solved "*comp_str
-            end
-        else
-            ref = reference_results[benchname]
-            res = bench_best_resultpairs[benchname].second
-
-            ref_solved = ref.solved
-            res_solved = bench_best_resultpairs[benchname].first[2].solved_fully
-
-            ref_obj = ref.nof_adders + ref.adder_depth
-            res_obj = res.adder_count + res.depth_max
-
-            if ref_obj < res_obj
-                comp_str = "worse"
-                if ref_solved && res_solved
-                    comp_str = "solved "*comp_str
-                end
-            elseif ref_obj > res_obj
-                comp_str = "better"
-            ## lower rungs are objectively equal
-            elseif ref.adder_depth > res.depth_max
-                comp_str = "shallower"
-            elseif ref.nof_adders > res.adder_count
-                comp_str = "narrower"
-            else
-                comp_str = "equal"
-            end
-
-            if !ref_solved && res_solved
-                comp_str = "solved "*comp_str
-            end
-            if ref_solved && !res_solved
-                comp_str = "unsolved "*comp_str
-            end
-        end
-        print("\t$(comp_str)")
-        csv_line = csv_line*","*comp_str
-
-        println()
-
-        @printf(fio, "%s\n", csv_line)
+        summary = SummarisedComparitiveResultsMCM(benchname, refresult, result)
+        println(summary)
+        @printf(fio, "%s\n", to_csv_line(summary; prefix_header=first))
+        first = false
     end
 end

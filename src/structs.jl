@@ -29,12 +29,25 @@ end
     MinAdderDepthSum
 end
 
+@kwdef struct MCMLiftingConstraintsSelection
+    adder_msd_complex_sorted_coefficient_lock::Bool
+    adder_one_input_noshift::Bool
+    unique_sums::Bool
+end
+
+@kwdef struct MCMConstraintOptions
+    sign_selection_direct_not_inferred::Bool
+    use_indicator_constraints_not_big_m::Bool
+end
+
 @kwdef struct MCMParam
     min_nof_adders::Int
     max_nof_adders::Int
     nof_adder_inputs::Int
     data_bit_width::Int
     maximum_shift::Int
+    lifting_constraints::MCMLiftingConstraintsSelection
+    constraint_options::MCMConstraintOptions
     objective::ObjectiveMCM = MinAdderCountPlusMaxAdderDepth
 end
 

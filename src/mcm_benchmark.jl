@@ -34,6 +34,15 @@ for bench in benchmarks
                 nof_adder_inputs=2,
                 data_bit_width=bit_width,
                 maximum_shift=bit_width,
+                lifting_constraints=MCMLiftingConstraintsSelection(
+                    adder_msd_complex_sorted_coefficient_lock=true,
+                    adder_one_input_noshift=true,
+                    unique_sums=true
+                ),
+                constraint_options=MCMConstraintOptions(
+                    sign_selection_direct_not_inferred=true,
+                    use_indicator_constraints_not_big_m=false
+                ),
                 objective=obj,
             )
 
@@ -60,6 +69,8 @@ for bench in benchmarks
                     ) => results
                 )
             end
+            ## cool computer down period
+            sleep(div(param.TimeLimit, 60))
         end
     end
 end

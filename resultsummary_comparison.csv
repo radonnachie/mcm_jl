@@ -15,7 +15,7 @@ DEMPSTER04_E3,,,,,,,nothing
 DEMPSTER04_F3,,,,8,4,false,OpenFinality NovelObjectivity
 DEMPSTER04_G4,10,3,false,,,,OpenFinality MissingObjectivity
 DEMPSTER04_H4,10,3,false,,,,OpenFinality MissingObjectivity
-DEMPSTER04_I5,10,3,false,,,,OpenFinality MissingObjectivity
+DEMPSTER04_I5,10,3,false,10,3,false,OpenFinality EqualObjectivity
 DEMPSTER04_J5,9,3,false,10,3,false,OpenFinality WorseObjectivity
 DEMPSTER04_K5,10,3,false,9,4,false,OpenFinality NarrowerObjectivity
 DEMPSTER04_L5,11,3,false,11,4,false,OpenFinality WorseObjectivity
@@ -39,12 +39,12 @@ JHENG04_29A,9,3,false,10,2,true,NewlyClosedFinality ShallowerObjectivity
 JHENG04_29B,9,2,true,9,2,true,ClosedFinality EqualObjectivity
 JHENG04_30,8,2,true,8,2,true,ClosedFinality EqualObjectivity
 JOHANSSON08_28,14,3,false,12,3,true,NewlyClosedFinality BetterObjectivity
-JOHANSSON08_30,33,3,false,,,,OpenFinality MissingObjectivity
+JOHANSSON08_30,33,3,false,32,3,false,OpenFinality BetterObjectivity
 JOHANSSON08_A5,6,3,true,6,3,true,ClosedFinality EqualObjectivity
 JOHANSSON08_B5,7,3,true,7,3,true,ClosedFinality EqualObjectivity
 KWENTUS97_11,3,3,true,3,3,true,ClosedFinality EqualObjectivity
 KWENTUS97_15,4,3,true,5,3,true,ClosedFinality WorseObjectivity
-KWENTUS97_47,20,2,false,,,,OpenFinality MissingObjectivity
+KWENTUS97_47,20,2,false,18,4,false,OpenFinality NarrowerObjectivity
 LAPLACIAN_3,3,3,true,3,3,true,ClosedFinality EqualObjectivity
 LIM83A_36,5,1,true,5,1,true,ClosedFinality EqualObjectivity
 LIM83_121,54,3,false,,,,OpenFinality MissingObjectivity

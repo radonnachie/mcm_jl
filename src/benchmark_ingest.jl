@@ -1,26 +1,3 @@
-using Printf
-
-struct BenchmarkDetails
-    name::String
-    wordlength::UInt
-    number_of_coefficients::UInt
-    number_of_unique_coefficients::UInt
-    coefficients::Vector{Int}
-    unique_coefficients::Vector{Int}
-end
-
-function Base.show(io::IO, bd::BenchmarkDetails)
-    Printf.@printf(io,
-        "BenchmarkDetails(%s, W=%d, Nc=%d>=%d, %s, %s)",
-        bd.name,
-        bd.wordlength,
-        bd.number_of_coefficients,
-        bd.number_of_unique_coefficients,
-        bd.coefficients,
-        bd.unique_coefficients
-    )
-end
-
 function readBenchmarkDetails(filepath::String)::Vector{BenchmarkDetails}
     benchmarks = Vector{BenchmarkDetails}()
     open(filepath) do file

@@ -1,14 +1,13 @@
 using Serialization
 using Dates
-include("$(@__DIR__)/structs.jl")
-include("$(@__DIR__)/mcm.jl")
-include("$(@__DIR__)/benchmark_ingest.jl")
+using MCM
 
 
-for f in readdir("/work/", join=true)
-    if startswith(f, "/work/results_")
-        println(f)
-        open(f, "r") do fio
+for f in readdir("/work/")
+    println(f)
+    if startswith(f, "results_2024-11-1")
+        println("!!!!"*f)
+        open("/work/"*f, "r") do fio
             while !eof(fio)
                 kp = deserialize(fio)
                 println(kp.first)

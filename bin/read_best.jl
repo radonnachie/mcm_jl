@@ -1,9 +1,7 @@
 using Serialization
 using Dates
-include("$(@__DIR__)/structs.jl")
-include("$(@__DIR__)/mcm.jl")
-include("$(@__DIR__)/benchmark_ingest.jl")
-include("$(@__DIR__)/reference_results_ingest.jl")
+using Printf
+using MCM
 
 bench_best_resultpairs = Dict()
 benchmarks_solvedin = Dict()

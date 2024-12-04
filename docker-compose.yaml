@@ -3,36 +3,33 @@ services:
     container_name: mcm_jl_pluto
     build:
       context: .
+    image: radonnachie/mcm_jl:1.0
     volumes:
       - .:/work
-    command: julia ./notebooks/pluto_serve.jl
+    command: cd ./notebooks && julia ./pluto_serve.jl
     ports:
       - "1234:1234"
   mcm_jl_benchmark:
     container_name: mcm_jl_benchmark
-    build:
-      context: .
+    image: radonnachie/mcm_jl:1.0
     volumes:
       - .:/work
-    command: julia ./src/mcm_benchmark.jl
+    command: julia ./bin/mcm_benchmark.jl
   read_result:
     container_name: read_result
-    build:
-      context: .
+    image: radonnachie/mcm_jl:1.0
     volumes:
       - .:/work
-    command: julia ./src/read.jl
+    command: julia ./bin/read.jl
   read_best:
     container_name: read_best
-    build:
-      context: .
+    image: radonnachie/mcm_jl:1.0
     volumes:
       - .:/work
-    command: julia ./src/read_best.jl
+    command: julia ./bin/read_best.jl
   analyse:
     container_name: analyse
-    build:
-      context: .
+    image: radonnachie/mcm_jl:1.0
     volumes:
       - .:/work
-    command: julia ./src/upperbound_analysis.jl
+    command: julia ./bin/upperbound_analysis.jl

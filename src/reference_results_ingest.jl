@@ -1,6 +1,3 @@
-using Printf
-include("$(@__DIR__)/structs.jl")
-
 function readReferenceResults(filepath::String)::Vector{ReferenceResult}
     refs = Vector{ReferenceResult}()
     open(filepath) do file

@@ -1,6 +1,26 @@
+module MCM
+
 using JuMP
-using Printf
 using Gurobi
+using Printf
+using Dates
+
+include("structs.jl")
+export GurobiParam, MCMLiftingConstraintsSelection, MCMConstraintOptions, MCMParam, ResultsMCM, ReferenceResult, SummarisedResultsMCM, ComparitiveCategory, SummarisedComparitiveResultsMCM, ResultsKey, ObjectiveMCM, ObjectivityCategory, FinalityCategory
+export to_csv_line
+
+include("reference_results_ingest.jl")
+export ReferenceResult
+export readReferenceResults, getBestReferenceResults
+
+include("benchmark_ingest.jl")
+export BenchmarkDetails
+export readBenchmarkDetails
+
+include("csd.jl")
+export csd, union_csd, count_components, unique_subsections, csd2int, get_odd_factor, number_of_adders_min, number_of_adders_max_ktree, get_unique_subterms, number_of_adders_max_uniqueterms, number_of_adders_max_nonzeropairs
+
+export getGurobiModelMILP, mcm!, preprocess_coefficients, number_of_adders_minmax
 
 function getGurobiModelMILP(;
     param::GurobiParam=GurobiParam()
@@ -561,3 +581,5 @@ function mcm!(
 	end
 	results
 end
+
+end # module MCM

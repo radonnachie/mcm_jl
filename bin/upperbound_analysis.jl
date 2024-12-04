@@ -1,11 +1,8 @@
 using Serialization
 using Dates
 using Statistics
-include("$(@__DIR__)/structs.jl")
-include("$(@__DIR__)/mcm.jl")
-include("$(@__DIR__)/csd.jl")
-include("$(@__DIR__)/benchmark_ingest.jl")
-include("$(@__DIR__)/reference_results_ingest.jl")
+using Printf
+using MCM
 
 reference_results = getBestReferenceResults("/work/data/reference_results.csv")
 

@@ -24,13 +24,22 @@ for f in readdir("/work/")
                     if !haskey(bench_best_resultpairs, benchname)
                         bench_best_resultpairs[benchname] = ((f, kp.first) => r)
                     else
+                        best_result_key = bench_best_resultpairs[benchname].first[2]
                         best_result = bench_best_resultpairs[benchname].second
+                        
                         best_obj = best_result.depth_max + best_result.adder_count
                         this_obj = r.depth_max + r.adder_count
+
+                        # take better solution
                         if best_obj < this_obj
                             continue
                         end
+                        # take shallower solution
                         if best_obj == this_obj && best_result.depth_max < r.depth_max
+                            continue
+                        end
+                        # take shorter solve time (integer seconds resolution)
+                        if div(best_result_key.elapsed_ns, 1e9) < div(kp.first.elapsed_ns, 1e9)
                             continue
                         end
                         
@@ -82,6 +91,7 @@ open("/work/resultsummary_comparison.csv", "w") do fio
             solved = bench_best_resultpairs[benchname].first[2].solved_fully,
             nof_adders = bench_best_resultpairs[benchname].second.adder_count,
             adder_depth = bench_best_resultpairs[benchname].second.depth_max,
+            solve_time_s = bench_best_resultpairs[benchname].first[2].elapsed_ns/1e9,
         ) : nothing
         refresult = haskey(reference_results, benchname) ? SummarisedResultsMCM(reference_results[benchname]) : nothing
 

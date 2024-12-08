@@ -171,6 +171,7 @@ FinalityCategoryStringMap::Dict{String, FinalityCategory} = Dict(
     solved::Bool
     nof_adders::Int
     adder_depth::Int
+    solve_time_s::Float32
 end
 
 function SummarisedResultsMCM(r::ReferenceResult)
@@ -178,6 +179,7 @@ function SummarisedResultsMCM(r::ReferenceResult)
         solved = r.solved,
         nof_adders = r.nof_adders,
         adder_depth = r.adder_depth,
+        solve_time_s = r.time_s,
     )
 end
 
@@ -289,22 +291,24 @@ function to_csv_line(
     prefix_header::Bool = false
 )::String
     (prefix_header
-        ? "benchmark_name,ref_nof_adders,ref_adder_depth,ref_solved,nof_adders,adder_depth,solved,comparison\n"
+        ? "benchmark_name,ref_nof_adders,ref_adder_depth,ref_solved,ref_solve_s,nof_adders,adder_depth,solved,solve_s,comparison\n"
         : ""
     ) * @sprintf(
         "%s,%s,%s,%s",
         r.benchmark_name,
-        isnothing(r.reference_result) ? ",," : @sprintf(
-            "%d,%d,%s",
+        isnothing(r.reference_result) ? ",,," : @sprintf(
+            "%d,%d,%s,%0.3f",
             r.reference_result.nof_adders,
             r.reference_result.adder_depth,
             r.reference_result.solved,
+            r.reference_result.solve_time_s,
         ),
-        isnothing(r.result) ? ",," : @sprintf(
-            "%d,%d,%s",
+        isnothing(r.result) ? ",,," : @sprintf(
+            "%d,%d,%s,%0.3f",
             r.result.nof_adders,
             r.result.adder_depth,
             r.result.solved,
+            r.result.solve_time_s,
         ),
         r.comparison
     )
@@ -316,16 +320,18 @@ function SummarisedComparitiveResultsMCM(
     line_data = split(line, ",")
 
     SummarisedComparitiveResultsMCM(
-        line_data[1],
-        length(join(line_data[2:4]))== 0 ? nothing : SummarisedResultsMCM(
+        String(line_data[1]),
+        length(join(line_data[2:5])) == 0 ? nothing : SummarisedResultsMCM(
             solved = parse(Bool, line_data[4]),
             nof_adders = parse(Int, line_data[2]),
             adder_depth = parse(Int, line_data[3]),
+            solve_time_s = parse(Float32, line_data[5]),
         ),
-        length(join(line_data[5:7]))== 0 ? nothing :  SummarisedResultsMCM(
-            solved = parse(Bool, line_data[7]),
-            nof_adders = parse(Int, line_data[5]),
-            adder_depth = parse(Int, line_data[6]),
+        length(join(line_data[6:9])) == 0 ? nothing :  SummarisedResultsMCM(
+            solved = parse(Bool, line_data[8]),
+            nof_adders = parse(Int, line_data[6]),
+            adder_depth = parse(Int, line_data[7]),
+            solve_time_s = parse(Float32, line_data[9]),
         )
     )
 end

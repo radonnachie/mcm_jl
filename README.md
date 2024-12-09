@@ -5,9 +5,10 @@
 ### 1. Setup
 - Obtain a WSL licence for Gurobi and place it at the root of this repository: `./gurobi.lic`.
 ### 2. Execute Benchmarks
-- `docker compose up mcm_jl_benchmark`
+- `docker compose run --rm mcm_jl_benchmark`
+  - optionally suffix category selections to rerun benchmarks with particular results, e.g. " -c *-Missing".
 ### 3. Review Results
-- `docker compose up read_best`
+- `docker compose run --rm read_best`
 
 
 # Upper bound analysis

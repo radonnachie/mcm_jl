@@ -152,8 +152,9 @@ end
     NovelObjectivity
 end
 ObjectivityCategoryStringMap::Dict{String, ObjectivityCategory} = Dict(
-    String(Symbol(inst)) => inst
+    long ? String(Symbol(inst)) => inst : String(Symbol(inst))[1:end-length("Objectivity")] => inst
     for inst in instances(ObjectivityCategory)
+    for long in [false, true]
 )
 
 @enum FinalityCategory begin
@@ -163,8 +164,9 @@ ObjectivityCategoryStringMap::Dict{String, ObjectivityCategory} = Dict(
     NewlyClosedFinality
 end
 FinalityCategoryStringMap::Dict{String, FinalityCategory} = Dict(
-    String(Symbol(inst)) => inst
+    long ? String(Symbol(inst)) => inst : String(Symbol(inst))[1:end-length("Finality")] => inst
     for inst in instances(FinalityCategory)
+    for long in [false, true]
 )
 
 @kwdef struct SummarisedResultsMCM
@@ -186,67 +188,68 @@ end
 struct ComparitiveCategory
     finality::FinalityCategory
     objectivity::ObjectivityCategory
+end
 
-    function ComparitiveCategory(
-        reference::Union{SummarisedResultsMCM, Nothing},
-        result::Union{SummarisedResultsMCM, Nothing}
-    )
-        if isnothing(reference)
-            @assert !isnothing(result) "At least one result must be something."
-            return new(
-                result.solved ? NewlyClosedFinality : OpenFinality,
-                NovelObjectivity
-            )
-        elseif isnothing(result)
-            return new(
-                reference.solved ? NotClosedFinality : OpenFinality,
-                MissingObjectivity
-            )
-        end
-
-        objectivity = WorseObjectivity
-        ref_objective = reference.nof_adders + reference.adder_depth
-        res_objective = result.nof_adders + result.adder_depth
-
-        if ref_objective == res_objective
-            objectivity = EqualObjectivity
-            if reference.nof_adders > result.nof_adders
-                objectivity = NarrowerObjectivity
-            elseif reference.adder_depth > result.adder_depth
-                objectivity = ShallowerObjectivity
-            end
-        elseif ref_objective > res_objective
-            objectivity = BetterObjectivity
-        end
-
-        finality = OpenFinality
-        if reference.solved
-            if result.solved
-                finality = ClosedFinality
-            else
-                finality = NotClosedFinality
-            end
-        else
-            if result.solved
-                finality = NewlyClosedFinality
-            else
-                finality = OpenFinality
-            end
-        end
-
-        new(finality, objectivity)
-    end
-
-    
-    function ComparitiveCategory(
-        str::AbstractString
-    )
-        finality, objectivity = split(str; limit=2)
-        new(
-            FinalityCategoryStringMap[finality],
-            ObjectivityCategoryStringMap[objectivity]
+function ComparitiveCategory(
+    reference::Union{SummarisedResultsMCM, Nothing},
+    result::Union{SummarisedResultsMCM, Nothing}
+)
+    if isnothing(reference)
+        @assert !isnothing(result) "At least one result must be something."
+        return ComparitiveCategory(
+            result.solved ? NewlyClosedFinality : OpenFinality,
+            NovelObjectivity
+        )
+    elseif isnothing(result)
+        return ComparitiveCategory(
+            reference.solved ? NotClosedFinality : OpenFinality,
+            MissingObjectivity
         )
     end
+
+    objectivity = WorseObjectivity
+    ref_objective = reference.nof_adders + reference.adder_depth
+    res_objective = result.nof_adders + result.adder_depth
+
+    if ref_objective == res_objective
+        objectivity = EqualObjectivity
+        if reference.nof_adders > result.nof_adders
+            objectivity = NarrowerObjectivity
+        elseif reference.adder_depth > result.adder_depth
+            objectivity = ShallowerObjectivity
+        end
+    elseif ref_objective > res_objective
+        objectivity = BetterObjectivity
+    end
+
+    finality = OpenFinality
+    if reference.solved
+        if result.solved
+            finality = ClosedFinality
+        else
+            finality = NotClosedFinality
+        end
+    else
+        if result.solved
+            finality = NewlyClosedFinality
+        else
+            finality = OpenFinality
+        end
+    end
+
+    ComparitiveCategory(finality, objectivity)
+end
+
+
+function ComparitiveCategory(
+    str::AbstractString;
+    delimiter=isspace
+)
+    finality, objectivity = split(str, delimiter; limit=2)
+    ComparitiveCategory(
+        FinalityCategoryStringMap[finality],
+        ObjectivityCategoryStringMap[objectivity]
+    )
 end
 
 function Base.show(io::IO, c::ComparitiveCategory)

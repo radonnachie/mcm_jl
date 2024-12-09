@@ -56,7 +56,7 @@ end
 function number_of_adders_minmax(coeffs::Vector{UInt}; nof_adder_inputs::Int=2)::Tuple{Int, Int}
 	return (
 		number_of_adders_min(coeffs; nof_adder_inputs=nof_adder_inputs),
-		number_of_adders_max_uniqueterms(coeffs; nof_adder_inputs=nof_adder_inputs)
+		number_of_adders_max_ktree(coeffs; nof_adder_inputs=nof_adder_inputs)
 	)
 end
 

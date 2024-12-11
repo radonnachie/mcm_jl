@@ -1,9 +1,9 @@
 @kwdef struct GurobiParam    
-    TimeLimit::Int = 300
+    TimeLimit::Int = 600
     Presolve::Int = 1
     IntegralityFocus::Int = 1
-    MIPFocus::Int = 3
-    ConcurrentMIP::Int = 2
+    MIPFocus::Int = 0
+    ConcurrentMIP::Int = 4 # https://www.gurobi.com/documentation/current/refman/mipfocus.html#parameter:MIPFocus
 end
 
 function Base.show(io::IO, r::GurobiParam)
@@ -35,50 +35,6 @@ function Base.show(io::IO, bd::BenchmarkDetails)
         bd.number_of_unique_coefficients,
         bd.coefficients,
         bd.unique_coefficients
-    )
-end
-
-
-@enum ObjectiveMCM begin
-    MinAdderCount
-    MinMaxAdderDepth
-    MinAdderCountPlusMaxAdderDepth
-    MinNaAdderCountPlusMaxAdderDepth
-    MinAdderCountPlusNaMaxAdderDepth
-    MinAdderDepthSum
-end
-
-@kwdef struct MCMLiftingConstraintsSelection
-    adder_msd_complex_sorted_coefficient_lock::Bool
-    adder_one_input_noshift::Bool
-    unique_sums::Bool
-end
-
-@kwdef struct MCMConstraintOptions
-    sign_selection_direct_not_inferred::Bool
-    use_indicator_constraints_not_big_m::Bool
-end
-
-@kwdef struct MCMParam
-    min_nof_adders::Int
-    max_nof_adders::Int
-    nof_adder_inputs::Int
-    data_bit_width::Int
-    maximum_shift::Int
-    lifting_constraints::MCMLiftingConstraintsSelection
-    constraint_options::MCMConstraintOptions
-    objective::ObjectiveMCM = MinAdderCountPlusMaxAdderDepth
-end
-
-function Base.show(io::IO, r::MCMParam)
-    @printf(io, 
-        "MCMParam(%d <= N_a <= %d (%d inputs), W=%d, << <=%d, %s)",
-        r.min_nof_adders,
-        r.max_nof_adders,
-        r.nof_adder_inputs,
-        r.data_bit_width,
-        r.maximum_shift,
-        r.objective
     )
 end
 
@@ -143,6 +99,7 @@ function Base.show(io::IO, r::ReferenceResult)
 end
 
 @enum ObjectivityCategory begin
+    InfeasibleObjectivity
     MissingObjectivity
     WorseObjectivity
     EqualObjectivity
@@ -345,6 +302,7 @@ end
     gurobi_parameters::GurobiParam
     mcm_parameters::MCMParam
     solved_fully::Bool
+    feasible::Bool
     elapsed_ns::UInt64
 end
 
@@ -359,3 +317,31 @@ function Base.show(io::IO, r::ResultsKey)
         r.solved_fully ? "" : "Not "
     )
 end
+
+function SummarisedResultsMCM(rp::Pair{ResultsKey, ResultsMCM})
+    SummarisedResultsMCM(
+        solved = rp.first.solved_fully,
+        nof_adders = rp.second.adder_count,
+        adder_depth = rp.second.depth_max,
+        solve_time_s = rp.first.elapsed_ns/1e9,
+    )
+end
+
+function mcm_run_parameters_key(
+    gp::GurobiParam,
+    mp::MCMParam
+)::String
+    @sprintf(
+        "<%ds:%sP:%s:L(%sc:%sz:%su):C(%sssd:%si)",
+        gp.TimeLimit,
+        gp.Presolve == 1 ? "" : "!",
+        String(Symbol(mp.max_nof_adders_func))[length("number_of_adders_max_")+1:end],
+        mp.lifting_constraints.adder_msd_complex_sorted_coefficient_lock ? "" : "!",
+        mp.lifting_constraints.adder_one_input_noshift ? "" : "!",
+        mp.lifting_constraints.unique_sums ? "" : "!",
+        mp.constraint_options.sign_selection_direct_not_inferred ? "" : "!",
+        mp.constraint_options.use_indicator_constraints_not_big_m ? "" : "!",
+    )
+end
+
+mcm_run_parameters_key(r::ResultsKey)::String = mcm_run_parameters_key(r.gurobi_parameters, r.mcm_parameters)

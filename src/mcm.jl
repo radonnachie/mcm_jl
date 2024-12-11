@@ -5,8 +5,64 @@ using Gurobi
 using Printf
 using Dates
 
+include("csd.jl")
+export csd, union_csd, count_components, unique_subsections, csd2int, get_odd_factor, number_of_adders_min, number_of_adders_max_ktree, get_unique_subterms, number_of_adders_max_uniqueterms, number_of_adders_max_nonzeropairs
+
+
+function bitwidth_of_adders(coeffs::Vector{Int})::Int
+	ceil(Int, log2(maximum(coeffs)))
+end
+
+function maxshift_of_adders(coeffs::Vector{Int})::Int
+	ceil(Int, log2(maximum(coeffs)))
+end
+
+@enum ObjectiveMCM begin
+    MinAdderCount
+    MinMaxAdderDepth
+    MinAdderCountPlusMaxAdderDepth
+    MinNaAdderCountPlusMaxAdderDepth
+    MinAdderCountPlusNaMaxAdderDepth
+    MinAdderDepthSum
+end
+
+@kwdef struct MCMLiftingConstraintsSelection
+    adder_msd_complex_sorted_coefficient_lock::Bool=true
+    adder_one_input_noshift::Bool=true
+    unique_sums::Bool=true
+end
+
+@kwdef struct MCMConstraintOptions
+    sign_selection_direct_not_inferred::Bool=true
+    use_indicator_constraints_not_big_m::Bool=false
+end
+
+@kwdef struct MCMParam
+    nof_adder_inputs::Int=2
+    min_nof_adders_func::Function = number_of_adders_min
+    max_nof_adders_func::Function = number_of_adders_max_ktree
+    data_bit_width_func::Function = bitwidth_of_adders #{Vector{Int}, Int}
+    maximum_shift_func::Function = maxshift_of_adders #{Vector{Int}, Int}
+    lifting_constraints::MCMLiftingConstraintsSelection = MCMLiftingConstraintsSelection()
+    constraint_options::MCMConstraintOptions = MCMConstraintOptions()
+    objective::ObjectiveMCM = MinAdderCountPlusMaxAdderDepth
+end
+
+function Base.show(io::IO, r::MCMParam)
+    @printf(io, 
+        "MCMParam(%d inputs, %s <= N_a <= %s, W=%s, << <=%s, %s)",
+        r.nof_adder_inputs,
+        r.min_nof_adders_func,
+        r.max_nof_adders_func,
+        r.data_bit_width_func,
+        r.maximum_shift_func,
+        r.objective
+    )
+end
+
+
 include("structs.jl")
-export GurobiParam, MCMLiftingConstraintsSelection, MCMConstraintOptions, MCMParam, ResultsMCM, ReferenceResult, SummarisedResultsMCM, ComparitiveCategory, SummarisedComparitiveResultsMCM, ResultsKey, ObjectiveMCM, ObjectivityCategory, FinalityCategory
+export GurobiParam, ResultsMCM, ReferenceResult, SummarisedResultsMCM, ComparitiveCategory, SummarisedComparitiveResultsMCM, ResultsKey, ObjectiveMCM, ObjectivityCategory, FinalityCategory, mcm_run_parameters_key
 export to_csv_line
 
 include("reference_results_ingest.jl")
@@ -17,10 +73,7 @@ include("benchmark_ingest.jl")
 export BenchmarkDetails
 export readBenchmarkDetails
 
-include("csd.jl")
-export csd, union_csd, count_components, unique_subsections, csd2int, get_odd_factor, number_of_adders_min, number_of_adders_max_ktree, get_unique_subterms, number_of_adders_max_uniqueterms, number_of_adders_max_nonzeropairs
-
-export getGurobiModelMILP, mcm!, preprocess_coefficients, number_of_adders_minmax
+export getGurobiModelMILP, mcm!, preprocess_coefficients, MCMLiftingConstraintsSelection, MCMConstraintOptions, MCMParam
 
 function getGurobiModelMILP(;
     param::GurobiParam=GurobiParam()
@@ -53,13 +106,6 @@ function preprocess_coefficients(coeffs::Vector{Int})::Vector{Int}
     ))
 end
 
-function number_of_adders_minmax(coeffs::Vector{UInt}; nof_adder_inputs::Int=2)::Tuple{Int, Int}
-	return (
-		number_of_adders_min(coeffs; nof_adder_inputs=nof_adder_inputs),
-		number_of_adders_max_ktree(coeffs; nof_adder_inputs=nof_adder_inputs)
-	)
-end
-
 function mcm!(
     model::Model,
     constant_multiples::Vector{Int},
@@ -67,7 +113,15 @@ function mcm!(
 	;
 	suggestions::Vector{Int}=Vector{Int}()
 )::Vector{ResultsMCM}
-	maximum_value = 2^param.data_bit_width
+	nof_adder_inputs = param.nof_adder_inputs
+	
+	constant_multiples_uint = UInt.(constant_multiples)
+	min_adders = param.min_nof_adders_func(constant_multiples_uint)
+	nof_adders = param.max_nof_adders_func(constant_multiples_uint)
+	data_bit_width = param.data_bit_width_func(constant_multiples)
+	maximum_shift = param.maximum_shift_func(constant_multiples)
+
+	maximum_value = 2^data_bit_width
 	
 	sort_by_component_count!(constant_multiples)
 
@@ -76,12 +130,9 @@ function mcm!(
 	input_sign_values = [-1, 1]
 	nof_input_sign_values = length(input_sign_values)
 
-	input_shift_values = [2^e for e in 0:param.maximum_shift]
+	input_shift_values = [2^e for e in 0:maximum_shift]
 	nof_shift_values = length(input_shift_values)
 	max_shift_factor = maximum(input_shift_values)
-
-	nof_adders = param.max_nof_adders
-	nof_adder_inputs = param.nof_adder_inputs
 
 	# Adders have outputs.
 	@variable(model, # TODO optionally possibly negative
@@ -522,12 +573,12 @@ function mcm!(
 	@constraint(model, adder_depth_max <= adder_depth_limit)
 
 	## limit adder count
-	@variable(model, param.min_nof_adders <= adder_enable_limit <= nof_adders, Int)
-	@constraint(model, param.min_nof_adders <= sum(adder_enables))
+	@variable(model, min_adders <= adder_enable_limit <= nof_adders, Int)
+	@constraint(model, min_adders <= sum(adder_enables))
 	@constraint(model, sum(adder_enables) <= adder_enable_limit)
 
 	## sum(adder_depth) is between 1*unique_coeff and sum(nof_adders, nof_adders-1, ... 1)
-	@variable(model, param.min_nof_adders <= adder_depth_sum <= (nof_adders+1)*nof_adders/2, Int)
+	@variable(model, min_adders <= adder_depth_sum <= (nof_adders+1)*nof_adders/2, Int)
 	@constraint(model, adder_depth_sum == sum(adder_depth))
 
 	# @objective(model, Min, sum(adder_depth))

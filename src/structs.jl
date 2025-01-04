@@ -114,6 +114,27 @@ ObjectivityCategoryStringMap::Dict{String, ObjectivityCategory} = Dict(
     for long in [false, true]
 )
 
+function shorthand(objective::ObjectivityCategory)::Char
+    if objective == InfeasibleObjectivity
+        return '!'
+    elseif objective == MissingObjectivity
+        return '?'
+    elseif objective == WorseObjectivity
+        return '-'
+    elseif objective == EqualObjectivity
+        return '='
+    elseif objective == NarrowerObjectivity
+        return '|'
+    elseif objective == ShallowerObjectivity
+        return '_'
+    elseif objective == BetterObjectivity
+        return '+'
+    elseif objective == NovelObjectivity
+        return '*'
+    end
+    @assert(false, @sprintf("Unhandled ObjectivityCategory: %s", objective))
+end
+
 @enum FinalityCategory begin
     OpenFinality
     NotClosedFinality
@@ -125,6 +146,19 @@ FinalityCategoryStringMap::Dict{String, FinalityCategory} = Dict(
     for inst in instances(FinalityCategory)
     for long in [false, true]
 )
+
+function shorthand(finality::FinalityCategory)::Char
+    if finality == OpenFinality
+        return 'O'
+    elseif finality == NotClosedFinality
+        return 'U'
+    elseif finality == ClosedFinality
+        return 'C'
+    elseif finality == NewlyClosedFinality
+        return 'N'
+    end
+    @assert(false, @sprintf("Unhandled FinalityCategory: %s", finality))
+end
 
 @kwdef struct SummarisedResultsMCM
     solved::Bool
@@ -197,7 +231,6 @@ function ComparitiveCategory(
     ComparitiveCategory(finality, objectivity)
 end
 
-
 function ComparitiveCategory(
     str::AbstractString;
     delimiter=isspace
@@ -216,6 +249,133 @@ function Base.show(io::IO, c::ComparitiveCategory)
         String(Symbol(c.objectivity))
     )
 end
+
+function shorthand(comparison::ComparitiveCategory)::String
+    return shorthand(comparison.finality)*shorthand(comparison.objectivity)
+end
+
+function score(finality::FinalityCategory, objective::ObjectivityCategory; enable_warning=true)::Int
+    if objective == InfeasibleObjectivity
+        if finality == OpenFinality
+            # Infeasible when not closed elsewhere is the second worst
+            return -19
+        elseif finality == NotClosedFinality
+            # Infeasible when closed elsewhere is the worst
+            return -23
+        end
+
+    elseif objective == MissingObjectivity
+        if finality == OpenFinality
+            # Could not find a solution when it has not been closed
+            return -7
+        elseif finality == NotClosedFinality
+            # Could not find a solution when it has been closed
+            return -11
+        end
+
+    elseif objective == WorseObjectivity
+        if finality == OpenFinality
+            # Maybe given more time an equal objectivity could be reached
+            return -3
+        elseif finality == NotClosedFinality
+            # Maybe given more time an equal objectivity could be reached
+            # but it has been closed elsewhere
+            return -5
+        elseif finality == ClosedFinality
+            # This indicates that the model has constraints that exclude a feasible better result
+            ## should warn
+            return -13
+        elseif finality == NewlyClosedFinality
+            # This indicates that the model has constraints that exclude a feasible better result
+            # when the other was not even closed
+            ## should warn
+            return -17
+        end
+
+    elseif objective in [
+        EqualObjectivity,
+        NarrowerObjectivity,
+        ShallowerObjectivity,
+    ]
+        if finality == OpenFinality
+            # Practically equivalent, a non-result
+            return 1
+        elseif finality == NotClosedFinality
+            # Minor negative result
+            return -2
+        elseif finality == ClosedFinality
+            # Practically equivalent, a non-result
+            return 1
+        elseif finality == NewlyClosedFinality
+            # Minor positive result
+            return 2
+        end
+
+    elseif objective == BetterObjectivity
+        if finality == OpenFinality
+            # Improved without closing
+            return 3
+        elseif finality == NotClosedFinality
+            # This indicates that the two models disagree on search space
+            # but this found a better result without closing
+            ## should warn
+            return 17
+        elseif finality == ClosedFinality
+            # This indicates that the two models disagree on search space
+            # but this found a better result
+            ## should warn
+            return 13
+        elseif finality == NewlyClosedFinality
+            # Improved and newly closed
+            return 5
+        end
+
+    elseif objective == NovelObjectivity
+        if finality == OpenFinality
+            # Provides a novel non-final solution
+            return 7
+        elseif finality == NewlyClosedFinality
+            # Provides a novel final solution
+            return 11
+        end
+    end
+    if enable_warning
+        @printf(stderr, "WARNING: ComparisonCategory should be impossible: %s", comparison)
+    end
+    return 0
+end
+
+score(comparison::ComparitiveCategory)::Int = score(comparison.finality, comparison.objectivity)
+
+function score(comparison_counts::Dict{ComparitiveCategory, Int})::Rational{BigInt}
+    neg, pos = big"1", big"1"
+    for (comp, count) in comparison_counts
+        if count == 0
+            continue
+        end
+        prod_score = score(comp)
+        if prod_score == 1
+            continue
+        end
+
+        prod_score = BigInt(prod_score)
+        if prod_score < 0
+            neg *= abs(prod_score)^count
+        else
+            pos *= prod_score^count
+        end
+    end
+    pos // neg
+end
+
+ComparitiveCategoryScoreMap::Dict{ComparitiveCategory, Int} = Dict(
+    ComparitiveCategory(f, o) => score(f, o; enable_warning=false)
+    for f in instances(FinalityCategory) for o in instances(ObjectivityCategory)
+)
+
+ComparitiveCategoryInstances = (c for (c, s) in ComparitiveCategoryScoreMap if s != 0)
+
+ComparitiveCategoryInstancesAscending = sort(collect(ComparitiveCategoryInstances), by=c->ComparitiveCategoryScoreMap[c])
 
 struct SummarisedComparitiveResultsMCM
     benchmark_name::String
@@ -332,15 +492,16 @@ function mcm_run_parameters_key(
     mp::MCMParam
 )::String
     @sprintf(
-        "<%ds:%sP:%s:L(%sc:%sz:%su):C(%sssd:%si)",
+        "G(<%ds:%sP:%sI):%s:L(%sc:%sz:%su):C(%sssd:%si)",
         gp.TimeLimit,
-        gp.Presolve == 1 ? "" : "!",
+        gp.Presolve == 1 ? "y" : "n",
+        gp.IntegralityFocus == 1 ? "y" : "n",
         String(Symbol(mp.max_nof_adders_func))[length("number_of_adders_max_")+1:end],
-        mp.lifting_constraints.adder_msd_complex_sorted_coefficient_lock ? "" : "!",
-        mp.lifting_constraints.adder_one_input_noshift ? "" : "!",
-        mp.lifting_constraints.unique_sums ? "" : "!",
-        mp.constraint_options.sign_selection_direct_not_inferred ? "" : "!",
-        mp.constraint_options.use_indicator_constraints_not_big_m ? "" : "!",
+        mp.lifting_constraints.adder_msd_complex_sorted_coefficient_lock ? "y" : "n",
+        mp.lifting_constraints.adder_one_input_noshift ? "y" : "n",
+        mp.lifting_constraints.unique_sums ? "y" : "n",
+        mp.constraint_options.sign_selection_direct_not_inferred ? "y" : "n",
+        mp.constraint_options.use_indicator_constraints_not_big_m ? "y" : "n",
     )
 end
 

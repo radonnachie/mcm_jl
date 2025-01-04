@@ -12,8 +12,23 @@ argconf = ArgParseSettings()
 		arg_type = String
 		nargs = '*'
         default = ["*-*"]
+	"--no-presolve"
+		help = "Disable the presolve."
+        action = "store_false"
+	"--no-integrality-focus"
+		help = "Disable IntegralityFocus. Not recommended."
+        action = "store_false"
+	"--no-coefficient-lock"
+		help = "Disable lifting constraint which locks the coefficients."
+        action = "store_false"
+	"--no-unique-sums"
+		help = "Disable lifting constraint which requires unique sums."
+        action = "store_false"
+	"--no-big-m"
+		help = "Use indicator constraints instead of big-M constraints."
+        action = "store_true"
 end
-args = parse_args(ARGS, argconf)
+@show args = parse_args(ARGS, argconf)
 
 category_selection_set = []
 for category_str in args["category-selection"]
@@ -50,8 +65,19 @@ end
 
 benchmarks = readBenchmarkDetails("/work/data/benchmarks.csv")
 
-param = GurobiParam()
-mcm_param = MCMParam()
+param = GurobiParam(
+    Presolve=args["no-presolve"],
+    IntegralityFocus=args["no-integrality-focus"],
+)
+mcm_param = MCMParam(
+    lifting_constraints=MCMLiftingConstraintsSelection(
+        adder_msd_complex_sorted_coefficient_lock=args["no-coefficient-lock"],
+        unique_sums=args["no-unique-sums"],
+    ),
+    constraint_options=MCMConstraintOptions(
+        use_indicator_constraints_not_big_m=args["no-big-m"]
+    )
+)
 
 now_str = Dates.format(Dates.now(), "Y-m-d_H-M-S")
 

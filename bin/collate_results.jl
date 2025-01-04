@@ -80,15 +80,22 @@ default_runparam_tuple = (GurobiParam(), MCMParam())
 defaultrunparam_benchmark_results = runparam_benchmark_best_results[default_runparam_tuple]
 
 runparam_keys = [k for k in keys(runparam_benchmark_best_results) if k != default_runparam_tuple]
+sort!(runparam_keys, by=rk->mcm_run_parameters_key(rk...))
 pushfirst!(runparam_keys, default_runparam_tuple)
 
 open("/work/resultsummary_alternatives.csv", "w") do fio
-    @printf(fio, "runparam,%s\n", join(benchmark_names, ","))
+    @printf(fio, "runparam,score,compcat_tallies,%s\n", join(benchmark_names, ","))
     for runparam_key in runparam_keys
         runparam_key_str = mcm_run_parameters_key(runparam_key...)
-        @printf(fio, "%s", runparam_key_str)
         println(runparam_key_str)
         
+        line = ""
+        
+        comparitive_counts = Dict{ComparitiveCategory, Int}(
+            c => 0
+            for c in MCM.ComparitiveCategoryInstances
+        )
+
         runparam_benchmark_results = runparam_benchmark_best_results[runparam_key]
         for benchname in benchmark_names
             default_summres = haskey(defaultrunparam_benchmark_results, benchname) ? SummarisedResultsMCM(defaultrunparam_benchmark_results[benchname]) : nothing
@@ -96,9 +103,28 @@ open("/work/resultsummary_alternatives.csv", "w") do fio
 
             comparison = all(isnothing.((default_summres, run_summres))) ? nothing : ComparitiveCategory(default_summres, run_summres)
             println("\t$(benchname) -> $(comparison)")
-            @printf(fio, ",%s", comparison)
+            line *= @sprintf("%s,", comparison)
+            if !isnothing(comparison)
+                comparitive_counts[comparison] += 1
+            end
         end
-        print(fio, "\n")
+        line = line[1:end-1]
+
+        score_rational = score(comparitive_counts)
+        score_str = @sprintf("%06d//%034d", numerator(score_rational), denominator(score_rational))
+        comparison_tally_str = join(
+            [
+                @sprintf(
+                    "%s%02d",
+                    shorthand(c),
+                    comparitive_counts[c]
+                )
+                for c in MCM.ComparitiveCategoryInstancesAscending
+            ],
+            ":"
+        )
+        line = join([runparam_key_str, score_str, comparison_tally_str, line], ",")*"\n"
+        print(fio, line)
     end
 end
 

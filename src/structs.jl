@@ -488,14 +488,21 @@ function SummarisedResultsMCM(rp::Pair{ResultsKey, ResultsMCM})
 end
 
 function mcm_run_parameters_key(
-    gp::GurobiParam,
+    gp::GurobiParam
+)::String
+    @sprintf(
+        "G(<%ds:%sP:%sI)",
+        gp.TimeLimit,
+        gp.Presolve == 1 ? "y" : "n",
+        gp.IntegralityFocus == 1 ? "y" : "n"
+    )
+end
+
+function mcm_run_parameters_key(
     mp::MCMParam
 )::String
     @sprintf(
-        "G(<%ds:%sP:%sI):%s:L(%sc:%sz:%su):C(%sssd:%si)",
-        gp.TimeLimit,
-        gp.Presolve == 1 ? "y" : "n",
-        gp.IntegralityFocus == 1 ? "y" : "n",
+        "%s:L(%sc:%sz:%su):C(%sssd:%si)",
         String(Symbol(mp.max_nof_adders_func))[length("number_of_adders_max_")+1:end],
         mp.lifting_constraints.adder_msd_complex_sorted_coefficient_lock ? "y" : "n",
         mp.lifting_constraints.adder_one_input_noshift ? "y" : "n",
@@ -505,4 +512,51 @@ function mcm_run_parameters_key(
     )
 end
 
-mcm_run_parameters_key(r::ResultsKey)::String = mcm_run_parameters_key(r.gurobi_parameters, r.mcm_parameters)
+function mcm_run_parameters_key(
+    mp::MCMParam,
+    sp::Union{GurobiParam},
+)::String
+    @sprintf(
+        "M(%s):S(%s)",
+        mcm_run_parameters_key(mp),
+        mcm_run_parameters_key(sp)
+    )
+end
+
+mcm_run_parameters_key(r::ResultsKey)::String = mcm_run_parameters_key(r.mcm_parameters, r.gurobi_parameters)
+
+@kwdef struct ModelWeight
+    nof_linear_constraints::Int
+    nof_nonlinear_constraints::Int
+end
+
+function Base.:(<)(m::ModelWeight, o::ModelWeight)::Bool
+    if o.nof_nonlinear_constraints < m.nof_nonlinear_constraints
+        return true
+    end
+    o.nof_linear_constraints < m.nof_linear_constraints
+end
+
+function Base.:(==)(m::ModelWeight, o::ModelWeight)::Bool
+    if o.nof_nonlinear_constraints != m.nof_nonlinear_constraints
+        return false
+    end
+    o.nof_linear_constraints == m.nof_linear_constraints
+end
+
+function Base.:(<=)(m::ModelWeight, o::ModelWeight)::Bool
+    if o.nof_nonlinear_constraints < m.nof_nonlinear_constraints
+        return true
+    end
+    o.nof_linear_constraints <= m.nof_linear_constraints
+end
+
+function to_csv_elem(
+    m::ModelWeight;
+)::String
+    @sprintf(
+        "lin=%d:non=%d",
+        m.nof_linear_constraints,
+        m.nof_nonlinear_constraints
+    )
+end

@@ -5,7 +5,7 @@
 ### 1. Setup
 - Obtain a WSL licence for Gurobi and place it at the root of this repository: `./gurobi.lic`.
 ### 2. Execute Benchmarks
-- `docker compose run --rm mcm_benchmark`
+- `docker compose run --rm benchmark`
   - optionally suffix category selections to rerun benchmarks with particular results, e.g. " -c *-Missing".
 ### 3. Review Results
 - `docker compose run --rm collate_results`

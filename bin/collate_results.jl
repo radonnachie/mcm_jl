@@ -32,7 +32,7 @@ end
 
 bench_best_resultpairs = Dict{String, Pair{ResultsKey, ResultsMCM}}()
 benchmarks_solvedin = Dict{String, Vector{String}}()
-runparam_benchmark_best_results = Dict{Tuple{GurobiParam, MCMParam}, Dict{String, Pair{ResultsKey, ResultsMCM}}}()
+runparam_benchmark_best_results = Dict{Tuple{MCMParam, GurobiParam}, Dict{String, Pair{ResultsKey, ResultsMCM}}}()
 
 for f in readdir("/work/")
     if startswith(f, "results_")
@@ -57,7 +57,7 @@ for f in readdir("/work/")
                         bench_best_resultpairs[benchname] = result_pair
                     end
 
-                    runparam_tuple = (result_key.gurobi_parameters, result_key.mcm_parameters)
+                    runparam_tuple = (result_key.mcm_parameters, result_key.gurobi_parameters)
                     runparam_bench_dict = get(runparam_benchmark_best_results, runparam_tuple, Dict{String, Pair{ResultsKey, ResultsMCM}}())
                     if is_result_better(
                         get(runparam_bench_dict, benchname, nothing),
@@ -75,7 +75,7 @@ end
 benchmark_names = [bench.name for bench in readBenchmarkDetails("/work/data/benchmarks.csv")]
 sort!(benchmark_names)
 
-default_runparam_tuple = (GurobiParam(), MCMParam())
+default_runparam_tuple = (MCMParam(), GurobiParam())
 @assert haskey(runparam_benchmark_best_results, default_runparam_tuple)
 defaultrunparam_benchmark_results = runparam_benchmark_best_results[default_runparam_tuple]
 

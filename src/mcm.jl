@@ -62,8 +62,8 @@ end
 
 
 include("structs.jl")
-export GurobiParam, ResultsMCM, ReferenceResult, SummarisedResultsMCM, ComparitiveCategory, SummarisedComparitiveResultsMCM, ResultsKey, ObjectiveMCM, ObjectivityCategory, FinalityCategory
-export mcm_run_parameters_key, score, shorthand, to_csv_line
+export GurobiParam, ResultsMCM, ReferenceResult, SummarisedResultsMCM, ComparitiveCategory, SummarisedComparitiveResultsMCM, ResultsKey, ObjectiveMCM, ObjectivityCategory, FinalityCategory, ModelWeight
+export mcm_run_parameters_key, score, shorthand, to_csv_line, to_csv_elem
 
 include("reference_results_ingest.jl")
 export ReferenceResult
@@ -73,22 +73,8 @@ include("benchmark_ingest.jl")
 export BenchmarkDetails
 export readBenchmarkDetails
 
-export getGurobiModelMILP, mcm!, preprocess_coefficients, MCMLiftingConstraintsSelection, MCMConstraintOptions, MCMParam
-
-function getGurobiModelMILP(;
-    param::GurobiParam=GurobiParam()
-)::Model
-
-    model = Model(Gurobi.Optimizer)
-	set_attribute(model, "TimeLimit", param.TimeLimit)
-	set_attribute(model, "Presolve", param.Presolve)
-	set_attribute(model, "IntegralityFocus", param.IntegralityFocus)
-	set_attribute(model, "MIPFocus", param.MIPFocus)
-	set_attribute(model, "ConcurrentMIP", param.ConcurrentMIP)
-	# set_attribute(model, "PoolSolutions", 100)
-
-    model
-end
+export mcm_model, preprocess_coefficients, MCMLiftingConstraintsSelection, MCMConstraintOptions, MCMParam
+export optimize!
 
 function sort_by_component_count!(coeffs::Vector{Int})::Vector{Int}
     sort(
@@ -106,13 +92,65 @@ function preprocess_coefficients(coeffs::Vector{Int})::Vector{Int}
     ))
 end
 
-function mcm!(
-    model::Model,
+function optimization_hook(model::Model; kwargs...)::Vector{ResultsMCM}
+	if haskey(kwargs, :optimizer_factory)
+		set_optimizer(model, kwargs[:optimizer_factory], add_bridges=get(kwargs, :add_bridges, false))
+	end
+	for (attr, val) in get(kwargs, :attributes, Dict())
+		set_attribute(model, attr, val)
+	end
+	if !isnothing(get(kwargs, :gurobi, nothing))
+		set_optimizer(model, Gurobi.Optimizer, add_bridges=get(kwargs, :add_bridges, false))
+		
+		param = kwargs[:gurobi]
+		set_attribute(model, "TimeLimit", param.TimeLimit)
+		set_attribute(model, "Presolve", param.Presolve)
+		set_attribute(model, "IntegralityFocus", param.IntegralityFocus)
+		set_attribute(model, "MIPFocus", param.MIPFocus)
+		set_attribute(model, "ConcurrentMIP", param.ConcurrentMIP)
+	end
+	
+	optimize!(model, ignore_optimize_hook = true)
+	@show is_solved_and_feasible(model)
+	@show result_count(model)
+
+	results = Vector{ResultsMCM}()
+	values = Dict(
+		sym => [value.(obj; result=i) for i in 1:result_count(model)]
+		for (sym, obj) in model.obj_dict
+	)
+
+	all_ao = [unique(values[:adder_outputs][i]) for i in 1:result_count(model)]
+	unique_ao = unique(all_ao)
+	unique_result_indices = [findfirst(x->x==un, all_ao) for un in unique_ao]
+
+	for i in unique_result_indices
+		push!(results, ResultsMCM(
+			result_index = i,
+			adder_count = sum(round.(Int, values[:adder_enables][i])),
+			depth_max = floor(Int, values[:adder_depth_max][i]),
+			outputs = floor.(Int, values[:adder_outputs][i]),
+			output_value_sel = round.(Int, values[:adder_output_value_sel][i]),
+			input_shifted = floor.(Int, values[:adder_input_shifted][i]),
+			input_value = floor.(Int, values[:adder_input_value][i]),
+			input_value_sel = round.(Int, values[:adder_input_value_sel][i]),
+			input_shift_sel = round.(Int, values[:adder_input_shift_sel][i]),
+			inputs = floor.(Int, values[:adder_inputs][i]),
+			results = zeros(Int, 1),
+			enables = round.(Int, values[:adder_enables][i]),
+			depth = floor.(Int, values[:adder_depth][i]),
+			input_depths = floor.(Int, values[:adder_input_depths][i]),
+		))
+	end
+	results
+end
+
+function mcm_model(
     constant_multiples::Vector{Int},
 	param::MCMParam
 	;
 	suggestions::Vector{Int}=Vector{Int}()
-)::Vector{ResultsMCM}
+)::Model
 	nof_adder_inputs = param.nof_adder_inputs
 	
 	constant_multiples_uint = UInt.(constant_multiples)
@@ -133,6 +171,8 @@ function mcm!(
 	input_shift_values = [2^e for e in 0:maximum_shift]
 	nof_shift_values = length(input_shift_values)
 	max_shift_factor = maximum(input_shift_values)
+
+	model = Model()
 
 	# Adders have outputs.
 	@variable(model, # TODO optionally possibly negative
@@ -601,36 +641,8 @@ function mcm!(
 		@objective(model, Min, adder_depth_sum)
 	end
 
-	optimize!(model)
-
-	@show is_solved_and_feasible(model)
-	@show result_count(model)
-
-	results = Vector{ResultsMCM}()
-
-	all_ao = [unique(value.(adder_outputs;result=i)) for i in 1:result_count(model)]
-	unique_ao = unique(all_ao)
-	unique_result_indices = [findfirst(x->x==un, all_ao) for un in unique_ao]
-
-	for i in unique_result_indices
-		push!(results, ResultsMCM(
-			result_index = i,
-			adder_count = sum(round.(Int, value.(adder_enables; result=i))),
-			depth_max = floor(Int, value(adder_depth_max; result=i)),
-			outputs = floor.(Int, value.(adder_outputs; result=i)),
-			output_value_sel = round.(Int, value.(adder_output_value_sel; result=i)),
-			input_shifted = floor.(Int, value.(adder_input_shifted; result=i)),
-			input_value = floor.(Int, value.(adder_input_value; result=i)),
-			input_value_sel = round.(Int, value.(adder_input_value_sel; result=i)),
-			input_shift_sel = round.(Int, value.(adder_input_shift_sel; result=i)),
-			inputs = floor.(Int, value.(adder_inputs; result=i)),
-			results = zeros(Int, nof_adders),
-			enables = round.(Int, value.(adder_enables; result=i)),
-			depth = floor.(Int, value.(adder_depth; result=i)),
-			input_depths = floor.(Int, value.(adder_input_depths; result=i)),
-		))
-	end
-	results
+	set_optimize_hook(model, optimization_hook)
+	model
 end
 
 end # module MCM

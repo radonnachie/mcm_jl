@@ -1,7 +1,7 @@
 name = "MCM"
 uuid = "0b8e7b22-38ac-4c4a-af2c-d7eaff2ac31c"
 authors = ["radonnachie <code@radonn.co.za> and contributors"]
-version = "1.1.0-DEV"
+version = "1.2.0-DEV"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"

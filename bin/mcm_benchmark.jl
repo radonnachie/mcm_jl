@@ -3,6 +3,7 @@ using Serialization
 using Dates
 using Printf
 using MCM
+import Pkg; Pkg.add("HiGHS"); using HiGHS
 
 helpstring_category_selection = "Hyphenate each category selection as a finality-objectivity pair. Use an asterisk to indicate all of either."
 argconf = ArgParseSettings()
@@ -87,22 +88,21 @@ for bench in benchmarks
             continue
         end
 
-        model = getGurobiModelMILP(;
-            param=param
-        )
-
         coeff_roots = preprocess_coefficients(bench.coefficients)
         println("\n$(bench.name): $(coeff_roots)")
-
-        ts_start = time_ns()
-        results = mcm!(
-            model,
+        model = mcm_model(
             coeff_roots,
             mcm_param
         )
         ts_end = time_ns()
+        results = MCM.optimize!(model;
+            # gurobi=param
+            optimizer_factory=HiGHS.Optimizer
+        )
+        ts_start = time_ns()
         @show results
 
+        exit()
         open("/work/results_$(now_str).jls", "a") do fio
             serialize(fio,
                 ResultsKey(

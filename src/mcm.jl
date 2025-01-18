@@ -62,8 +62,8 @@ end
 
 
 include("structs.jl")
-export GurobiParam, ResultsMCM, ReferenceResult, SummarisedResultsMCM, ComparitiveCategory, SummarisedComparitiveResultsMCM, ResultsKey, ObjectiveMCM, ObjectivityCategory, FinalityCategory, mcm_run_parameters_key
-export to_csv_line
+export GurobiParam, ResultsMCM, ReferenceResult, SummarisedResultsMCM, ComparitiveCategory, SummarisedComparitiveResultsMCM, ResultsKey, ObjectiveMCM, ObjectivityCategory, FinalityCategory
+export mcm_run_parameters_key, score, shorthand, to_csv_line
 
 include("reference_results_ingest.jl")
 export ReferenceResult

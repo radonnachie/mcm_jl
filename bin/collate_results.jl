@@ -3,22 +3,22 @@ using Dates
 using Printf
 using MCM
 
-function is_result_better(best::Union{Pair{ResultsKey, ResultsMCM}, Nothing}, candidate::Pair{ResultsKey, ResultsMCM})::Bool
+function is_result_better(best::Union{Pair{ResultsKey, SolutionMetricMCM}, Nothing}, candidate::Pair{ResultsKey, SolutionMetricMCM})::Bool
     if isnothing(best)
         return true
     end
-    best_result_key, best_result = best
-    candidate_result_key, candidate_result = candidate
+    best_result_key, best_solumetric = best
+    candidate_result_key, candidate_solumetric = candidate
     
-    best_obj = best_result.depth_max + best_result.adder_count
-    candidate_obj = candidate_result.depth_max + candidate_result.adder_count
+    best_obj = best_solumetric.depth_max + best_solumetric.adder_count
+    candidate_obj = candidate_solumetric.depth_max + candidate_solumetric.adder_count
 
     # take better solution
     if best_obj < candidate_obj
         return false
     end
     # take shallower solution
-    if best_obj == candidate_obj && best_result.depth_max < candidate_result.depth_max
+    if best_obj == candidate_obj && best_solumetric.depth_max < candidate_solumetric.depth_max
         return false
     end
     # take shorter solve time (integer seconds resolution)
@@ -30,9 +30,9 @@ function is_result_better(best::Union{Pair{ResultsKey, ResultsMCM}, Nothing}, ca
 end
 
 
-bench_best_resultpairs = Dict{String, Pair{ResultsKey, ResultsMCM}}()
+bench_best_resultpairs = Dict{String, Pair{ResultsKey, SolutionMetricMCM}}()
 benchmarks_solvedin = Dict{String, Vector{String}}()
-runparam_benchmark_best_results = Dict{Tuple{MCMParam, GurobiParam}, Dict{String, Pair{ResultsKey, ResultsMCM}}}()
+runparam_benchmark_best_results = Dict{Tuple{MCMParam, GurobiParam}, Dict{String, Pair{ResultsKey, SolutionMetricMCM}}}()
 
 for f in readdir("/work/")
     if startswith(f, "results_")
@@ -49,7 +49,7 @@ for f in readdir("/work/")
                 end
 
                 for (i,r) in enumerate(results)
-                    result_pair = (result_key => r)
+                    result_pair = (result_key => SolutionMetricMCM(r))
                     if is_result_better(
                         get(bench_best_resultpairs, benchname, nothing),
                         result_pair
@@ -58,7 +58,7 @@ for f in readdir("/work/")
                     end
 
                     runparam_tuple = (result_key.mcm_parameters, result_key.gurobi_parameters)
-                    runparam_bench_dict = get(runparam_benchmark_best_results, runparam_tuple, Dict{String, Pair{ResultsKey, ResultsMCM}}())
+                    runparam_bench_dict = get(runparam_benchmark_best_results, runparam_tuple, Dict{String, Pair{ResultsKey, SolutionMetricMCM}}())
                     if is_result_better(
                         get(runparam_bench_dict, benchname, nothing),
                         result_pair

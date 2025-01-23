@@ -66,6 +66,18 @@ function Base.show(io::IO, r::ResultsMCM)
     )
 end
 
+struct SolutionMetricMCM
+    adder_count::Int
+    depth_max::Int
+
+    function SolutionMetricMCM(r::ResultsMCM)
+        new(
+            r.adder_count,
+            r.depth_max
+        )
+    end
+end
+
 struct ReferenceResult
     benchmark_name::String
     # file_ag::String
@@ -478,7 +490,7 @@ function Base.show(io::IO, r::ResultsKey)
     )
 end
 
-function SummarisedResultsMCM(rp::Pair{ResultsKey, ResultsMCM})
+function SummarisedResultsMCM(rp::Pair{ResultsKey, SolutionMetricMCM})
     SummarisedResultsMCM(
         solved = rp.first.solved_fully,
         nof_adders = rp.second.adder_count,

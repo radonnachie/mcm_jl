@@ -3,7 +3,6 @@ using Serialization
 using Dates
 using Printf
 using MCM
-import Pkg; Pkg.add("HiGHS"); using HiGHS
 
 helpstring_category_selection = "Hyphenate each category selection as a finality-objectivity pair. Use an asterisk to indicate all of either."
 argconf = ArgParseSettings()
@@ -102,7 +101,6 @@ for bench in benchmarks
         ts_start = time_ns()
         @show results
 
-        exit()
         open("/work/results_$(now_str).jls", "a") do fio
             serialize(fio,
                 ResultsKey(

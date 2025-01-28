@@ -70,6 +70,13 @@ struct SolutionMetricMCM
     adder_count::Int
     depth_max::Int
 
+    function SolutionMetricMCM(o::SolutionMetricMCM)
+        new(
+            o.adder_count,
+            o.depth_max
+        )
+    end
+
     function SolutionMetricMCM(r::ResultsMCM)
         new(
             r.adder_count,
@@ -490,11 +497,12 @@ function Base.show(io::IO, r::ResultsKey)
     )
 end
 
-function SummarisedResultsMCM(rp::Pair{ResultsKey, SolutionMetricMCM})
+function SummarisedResultsMCM(rp::Pair{ResultsKey, <:Any})
+    second = SolutionMetricMCM(rp.second)
     SummarisedResultsMCM(
         solved = rp.first.solved_fully,
-        nof_adders = rp.second.adder_count,
-        adder_depth = rp.second.depth_max,
+        nof_adders = second.adder_count,
+        adder_depth = second.depth_max,
         solve_time_s = rp.first.elapsed_ns/1e9,
     )
 end

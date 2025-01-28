@@ -3,12 +3,14 @@ using Dates
 using Printf
 using MCM
 
-function is_result_better(best::Union{Pair{ResultsKey, SolutionMetricMCM}, Nothing}, candidate::Pair{ResultsKey, SolutionMetricMCM})::Bool
+function is_result_better(best::Union{Pair{ResultsKey, <:Any}, Nothing}, candidate::Pair{ResultsKey, <:Any})::Bool
     if isnothing(best)
         return true
     end
     best_result_key, best_solumetric = best
+    best_solumetric = SolutionMetricMCM(best_solumetric)
     candidate_result_key, candidate_solumetric = candidate
+    candidate_solumetric = SolutionMetricMCM(candidate_solumetric)
     
     best_obj = best_solumetric.depth_max + best_solumetric.adder_count
     candidate_obj = candidate_solumetric.depth_max + candidate_solumetric.adder_count
@@ -30,7 +32,7 @@ function is_result_better(best::Union{Pair{ResultsKey, SolutionMetricMCM}, Nothi
 end
 
 
-bench_best_resultpairs = Dict{String, Pair{ResultsKey, SolutionMetricMCM}}()
+bench_best_resultpairs = Dict{String, Pair{ResultsKey, Union{MCM.ResultsMCM}}}()
 benchmarks_solvedin = Dict{String, Vector{String}}()
 runparam_benchmark_best_results = Dict{Tuple{MCMParam, GurobiParam}, Dict{String, Pair{ResultsKey, SolutionMetricMCM}}}()
 
@@ -54,7 +56,7 @@ for f in readdir("/work/")
                         get(bench_best_resultpairs, benchname, nothing),
                         result_pair
                     )
-                        bench_best_resultpairs[benchname] = result_pair
+                        bench_best_resultpairs[benchname] = (result_key => r)
                     end
 
                     runparam_tuple = (result_key.mcm_parameters, result_key.gurobi_parameters)

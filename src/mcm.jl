@@ -145,34 +145,20 @@ function optimization_hook(model::Model; kwargs...)::Vector{ResultsMCM}
 	results
 end
 
-function mcm_model(
-    constant_multiples::Vector{Int},
-	param::MCMParam
-	;
-	suggestions::Vector{Int}=Vector{Int}()
-)::Model
-	nof_adder_inputs = param.nof_adder_inputs
-	
-	constant_multiples_uint = UInt.(constant_multiples)
-	min_adders = param.min_nof_adders_func(constant_multiples_uint)
-	nof_adders = param.max_nof_adders_func(constant_multiples_uint)
-	data_bit_width = param.data_bit_width_func(constant_multiples)
-	maximum_shift = param.maximum_shift_func(constant_multiples)
+function _model_mcm_constraints!(
+	model::Model;
+	nof_adders::Int,
+	nof_adder_inputs::Int,
+	nof_constant_multiples::Int,
+	shiftfactor_values::Vector{Int},
+	maximum_value::Int,
+	lifting_constraints::MCMLiftingConstraintsSelection,
+	constraint_options::MCMConstraintOptions
+)
+	nof_shift_values = length(shiftfactor_values)
+	max_shift_factor = maximum(shiftfactor_values)
 
-	maximum_value = 2^data_bit_width
-	
-	sort_by_component_count!(constant_multiples)
-
-	nof_constant_multiples = length(constant_multiples)
-
-	input_sign_values = [-1, 1]
-	nof_input_sign_values = length(input_sign_values)
-
-	input_shift_values = [2^e for e in 0:maximum_shift]
-	nof_shift_values = length(input_shift_values)
-	max_shift_factor = maximum(input_shift_values)
-
-	model = Model()
+	signfactor_values = [-1, 1]
 
 	# Adders have outputs.
 	@variable(model, # TODO optionally possibly negative
@@ -181,61 +167,12 @@ function mcm_model(
 	## A psuedo output for a static, non-existent adder is set to 1
 	@constraint(model, adder_outputs[0] == 1)
 
-	@variable(model,
-		adder_output_value_sel[
-			1:nof_constant_multiples,
-			1:nof_adders
-		],
-		Bin
-	)
-	@constraint(model, [a = 1:nof_adders],
-		sum(adder_output_value_sel[v, a] for v in 1:nof_constant_multiples) <= 1
-	)
-	@constraint(model, [v = 1:nof_constant_multiples],
-		sum(adder_output_value_sel[v, a] for a in 1:nof_adders) == 1
-	)
-	if param.constraint_options.use_indicator_constraints_not_big_m
-		@constraint(model, [v = 1:nof_constant_multiples, a = 1:nof_adders],
-			adder_output_value_sel[v,a] --> {adder_outputs[a] == constant_multiples[v]}
-		)
-	else
-		@constraint(model, [v = 1:nof_constant_multiples, a = 1:nof_adders],
-			constant_multiples[v] - (1-adder_output_value_sel[v, a])*maximum_value <= adder_outputs[a]
-		)
-		@constraint(model, [v = 1:nof_constant_multiples, a = 1:nof_adders],
-			adder_outputs[a] <= constant_multiples[v] + (1-adder_output_value_sel[v, a])*maximum_value
-		)
-	end
-
 	## The adders are enabled
 	@variable(model,
 		adder_enables[
 			1:nof_adders
 		],
 	Bin)
-	
-	if param.lifting_constraints.adder_msd_complex_sorted_coefficient_lock
-		## Because adder inputs are restricted to the outputs of previous adders
-		## the last N outputs are constrained to the coefficients, which are ordered
-		## by the number of CSD high-bits
-		@constraint(model, [v = 1:nof_constant_multiples],
-			adder_output_value_sel[v, nof_adders-nof_constant_multiples+v] == 1
-		)
-		### Constrain last N to always be enabled
-		@constraint(model, [a = nof_adders-(nof_constant_multiples-1):nof_adders],
-			adder_enables[a] == 1
-		)
-	end
-	## if there are suggestions, constrain the outputs to these when enabled
-	if length(suggestions) > 0
-		@show nof_factor_adders = nof_adders-nof_constant_multiples
-		@show nof_suggestions = length(suggestions)
-		@show nof_free_adders = nof_factor_adders-nof_suggestions
-		@show (nof_factor_adders-(nof_suggestions-1)):nof_factor_adders
-		@constraint(model, [a = (nof_factor_adders-(nof_suggestions-1)):nof_factor_adders],
-			adder_outputs[nof_free_adders+a] == adder_enables[nof_free_adders+a]*suggestions[a]
-		)
-	end
 
 	# Each adder input has 3 factors: sign, shift and value
 	## the shift*value product is captured by indicator constraints in `input_shifted`
@@ -266,7 +203,7 @@ function mcm_model(
 		sum(adder_input_value_sel[s, i, a] for s in a:nof_adders) == 0
 	)
 	value_M = 2*nof_adder_inputs*max_shift_factor*maximum_value
-	if param.constraint_options.use_indicator_constraints_not_big_m
+	if constraint_options.use_indicator_constraints_not_big_m
 		@constraint(model, [s = 0:nof_adders, i = 1:nof_adder_inputs, a = 1:nof_adders],
 			adder_input_value_sel[s,i,a] --> {adder_input_value[i, a] == adder_outputs[s]}
 		)
@@ -279,7 +216,7 @@ function mcm_model(
 		)
 	end
 	### non-enabled adders have zero as input values
-	if param.constraint_options.use_indicator_constraints_not_big_m
+	if constraint_options.use_indicator_constraints_not_big_m
 		@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
 			!adder_enables[a] --> {adder_input_value[i, a] == 0}
 		)
@@ -307,7 +244,7 @@ function mcm_model(
 	@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
 		sum(adder_input_shift_sel[s, i, a] for s in 1:nof_shift_values) == 1
 	)
-	if param.lifting_constraints.adder_one_input_noshift
+	if lifting_constraints.adder_one_input_noshift
 		## for the output to be odd, there must be an odd number of non-shifted inputs (which are all odd) 
 		### constrain one input to never be shifted
 		@constraint(model, [a = 1:nof_adders],
@@ -323,16 +260,16 @@ function mcm_model(
 	# TODO if not-enabled, then no shift zero-value inputs.
 
 	shifted_M = 2*maximum_value*max_shift_factor
-	if param.constraint_options.use_indicator_constraints_not_big_m
+	if constraint_options.use_indicator_constraints_not_big_m
 		@constraint(model, [s = 1:nof_shift_values, i = 1:nof_adder_inputs, a = 1:nof_adders],
-			adder_input_shift_sel[s,i,a] --> {adder_input_shifted[i, a] == adder_input_value[i,a]*input_shift_values[s]}
+			adder_input_shift_sel[s,i,a] --> {adder_input_shifted[i, a] == adder_input_value[i,a]*shiftfactor_values[s]}
 		)
 	else
 		@constraint(model, [s = 1:nof_shift_values, i = 1:nof_adder_inputs, a = 1:nof_adders],
-			adder_input_value[i,a]*input_shift_values[s] - (1 - adder_input_shift_sel[s, i, a])*shifted_M <= adder_input_shifted[i, a]
+			adder_input_value[i,a]*shiftfactor_values[s] - (1 - adder_input_shift_sel[s, i, a])*shifted_M <= adder_input_shifted[i, a]
 		)
 		@constraint(model, [s = 1:nof_shift_values, i = 1:nof_adder_inputs, a = 1:nof_adders],
-			adder_input_shifted[i, a] <= adder_input_value[i,a]*input_shift_values[s] + (1 - adder_input_shift_sel[s, i, a])*shifted_M
+			adder_input_shifted[i, a] <= adder_input_value[i,a]*shiftfactor_values[s] + (1 - adder_input_shift_sel[s, i, a])*shifted_M
 		)
 	end
 
@@ -341,31 +278,31 @@ function mcm_model(
 		-maximum_value <= adder_inputs[1:nof_adder_inputs, 1:nof_adders] <= maximum_value,
 	Int)
 	sign_M = 2*maximum_value*max_shift_factor
-	if param.constraint_options.sign_selection_direct_not_inferred
+	if constraint_options.sign_selection_direct_not_inferred
 		@variable(model,
 			adder_input_sign_sel[
-				1:nof_input_sign_values,
+				1:2,
 				1:nof_adder_inputs,
 				1:nof_adders
 			],
 		Bin)
 		@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
-			sum(adder_input_sign_sel[s, i, a] for s in 1:nof_input_sign_values) == 1
+			sum(adder_input_sign_sel[s, i, a] for s in 1:2) == 1
 		)
 		## At most one input negated
 		@constraint(model, [a = 1:nof_adders],
 			sum(adder_input_sign_sel[1, i, a] for i in 1:nof_adder_inputs) <= nof_adder_inputs-1
 		)
-		if param.constraint_options.use_indicator_constraints_not_big_m
-			@constraint(model, [s = 1:nof_input_sign_values, i = 1:nof_adder_inputs, a = 1:nof_adders],
-				adder_input_sign_sel[s,i,a] --> {adder_inputs[i, a] == adder_input_shifted[i, a]*input_sign_values[s]}
+		if constraint_options.use_indicator_constraints_not_big_m
+			@constraint(model, [s = 1:2, i = 1:nof_adder_inputs, a = 1:nof_adders],
+				adder_input_sign_sel[s,i,a] --> {adder_inputs[i, a] == adder_input_shifted[i, a]*signfactor_values[s]}
 			)
 		else
-			@constraint(model, [s = 1:nof_input_sign_values, i = 1:nof_adder_inputs, a = 1:nof_adders],
-				adder_input_shifted[i, a]*input_sign_values[s] - (1 - adder_input_sign_sel[s, i, a])*sign_M <= adder_inputs[i, a]
+			@constraint(model, [s = 1:2, i = 1:nof_adder_inputs, a = 1:nof_adders],
+				adder_input_shifted[i, a]*signfactor_values[s] - (1 - adder_input_sign_sel[s, i, a])*sign_M <= adder_inputs[i, a]
 			)
-			@constraint(model, [s = 1:nof_input_sign_values, i = 1:nof_adder_inputs, a = 1:nof_adders],
-				adder_inputs[i, a] <= adder_input_shifted[i, a]*input_sign_values[s] + (1 - adder_input_sign_sel[s, i, a])*sign_M
+			@constraint(model, [s = 1:2, i = 1:nof_adder_inputs, a = 1:nof_adders],
+				adder_inputs[i, a] <= adder_input_shifted[i, a]*signfactor_values[s] + (1 - adder_input_sign_sel[s, i, a])*sign_M
 			)
 		end
 	else		
@@ -379,7 +316,7 @@ function mcm_model(
 		@constraint(model, [a = 1:nof_adders],
 			sum(adder_input_sign_sel[i, a] for i in 1:nof_adder_inputs) <= nof_adder_inputs-1
 		)
-		if param.constraint_options.use_indicator_constraints_not_big_m
+		if constraint_options.use_indicator_constraints_not_big_m
 			@constraint(model, [i = 1:nof_adder_inputs, a = 1:nof_adders],
 				adder_input_sign_sel[i,a] --> {adder_inputs[i, a] == -adder_input_shifted[i, a]}
 			)
@@ -408,7 +345,7 @@ function mcm_model(
 	## When enabled, constrain output to sum
 	## When not-enabled, constrain output to 0
 	### TODO not necessary as inputs are zero when not-enabled
-	if param.constraint_options.use_indicator_constraints_not_big_m
+	if constraint_options.use_indicator_constraints_not_big_m
 		@constraint(model, [a = 1:nof_adders],
 			adder_enables[a] --> {adder_sums[a] == sum(adder_inputs[i, a] for i in 1:nof_adder_inputs)}
 		)
@@ -430,7 +367,7 @@ function mcm_model(
 		)
 	end
 
-	if param.lifting_constraints.unique_sums
+	if lifting_constraints.unique_sums
 		## Adder sums should be unique
 		comparison_values = ["equal", "lesser", "greater"]
 
@@ -439,7 +376,7 @@ function mcm_model(
 			sum(adder_sum_comparison_sel[c, a, a_other] for c in comparison_values) == 1
 		)
 
-		if param.constraint_options.use_indicator_constraints_not_big_m
+		if constraint_options.use_indicator_constraints_not_big_m
 			@constraint(model, [a_other = 1:nof_adders, a = 1:nof_adders],
 				adder_sum_comparison_sel["equal", a, a_other] --> {adder_sums[a] == adder_sums[a_other]}
 			)
@@ -501,16 +438,16 @@ function mcm_model(
 	)
 
 	## The output is the right shifted sum
-	if param.constraint_options.use_indicator_constraints_not_big_m
+	if constraint_options.use_indicator_constraints_not_big_m
 		@constraint(model, [s = 1:nof_shift_values, a = 1:nof_adders],
-			adder_sums_right_shift_sel[s, a] --> {adder_outputs[a]*input_shift_values[s] == adder_sums[a]}
+			adder_sums_right_shift_sel[s, a] --> {adder_outputs[a]*shiftfactor_values[s] == adder_sums[a]}
 		)
 	else
 		@constraint(model, [s = 1:nof_shift_values, a = 1:nof_adders],
-			adder_sums[a] - (1 - adder_sums_right_shift_sel[s, a])*max_shift_factor*sum_M <= adder_outputs[a]*input_shift_values[s]
+			adder_sums[a] - (1 - adder_sums_right_shift_sel[s, a])*max_shift_factor*sum_M <= adder_outputs[a]*shiftfactor_values[s]
 		)
 		@constraint(model, [s = 1:nof_shift_values, a = 1:nof_adders],
-			adder_outputs[a]*input_shift_values[s] <= adder_sums[a] + (1 - adder_sums_right_shift_sel[s, a])*max_shift_factor*sum_M
+			adder_outputs[a]*shiftfactor_values[s] <= adder_sums[a] + (1 - adder_sums_right_shift_sel[s, a])*max_shift_factor*sum_M
 		)
 	end
 	## adder outputs must be odd, when enabled (zero when not enabled)
@@ -522,6 +459,115 @@ function mcm_model(
 	@constraint(model, [a = 1:nof_adders],
 		adder_outputs[a] == 2*adder_output_oddity[a] + adder_enables[a]
 	)
+end
+
+function mcm_model(
+    constant_multiples::Vector{Int},
+	param::MCMParam
+	;
+	suggestions::Vector{Int}=Vector{Int}(),
+	model::Union{Nothing, <:Model} = nothing
+)::Model
+	nof_adder_inputs = param.nof_adder_inputs
+	
+	constant_multiples_uint = UInt.(constant_multiples)
+	min_adders = param.min_nof_adders_func(constant_multiples_uint)
+	nof_adders = param.max_nof_adders_func(constant_multiples_uint)
+	data_bit_width = param.data_bit_width_func(constant_multiples)
+	maximum_shift = param.maximum_shift_func(constant_multiples)
+
+	maximum_value = 2^data_bit_width
+	
+	sort_by_component_count!(constant_multiples)
+
+	nof_constant_multiples = length(constant_multiples)
+
+	shiftfactor_values = [2^e for e in 0:maximum_shift]
+	nof_shift_values = length(shiftfactor_values)
+	max_shift_factor = maximum(shiftfactor_values)
+
+	if isnothing(model)
+		model = Model()
+	end
+
+	if false
+		mcm_model_decisions!(
+			model;
+			nof_adders=nof_adders,
+			nof_adder_inputs=nof_adder_inputs,
+			nof_constant_multiples=nof_constant_multiples,
+			shiftfactor_values=shiftfactor_values,
+			maximum_value=maximum_value,
+			lifting_constraints=param.lifting_constraints,
+			constraint_options=param.constraint_options
+		)
+	else
+		_model_mcm_constraints!(
+			model;
+			nof_adders=nof_adders,
+			nof_adder_inputs=nof_adder_inputs,
+			nof_constant_multiples=nof_constant_multiples,
+			shiftfactor_values=shiftfactor_values,
+			maximum_value=maximum_value,
+			lifting_constraints=param.lifting_constraints,
+			constraint_options=param.constraint_options
+		)
+	end
+
+	adder_enables = model.obj_dict[:adder_enables]
+	adder_input_value_sel = model.obj_dict[:adder_input_value_sel]
+	adder_outputs = model.obj_dict[:adder_outputs]
+
+	# The outputs selectively equal the coefficients requested
+	@variable(model, adder_output_value_sel[1:nof_constant_multiples, 1:nof_adders], Bin)
+
+	# C: Each coefficient must be purposefully represented exactly once
+	## Does not preclude more than one adder from summing to the coeff (that's the uniqueness constraint's duty)
+	@constraint(model, [c = 1:nof_constant_multiples],
+		sum(adder_output_value_sel[c, a] for a in 1:nof_adders) == 1
+	)
+	# C: Adders can only be locked to a coefficient if enabled
+	@constraint(model, [a in 1:nof_adders],
+		sum(adder_output_value_sel[c, a] for c in 1:nof_constant_multiples) <= 1 # change rhs to adder_enables[a]
+	)
+	if param.lifting_constraints.adder_msd_complex_sorted_coefficient_lock
+		# lock adder output to ascending CSD-complexity
+		@constraint(model, [c = 1:nof_constant_multiples],
+			adder_output_value_sel[c, nof_adders-nof_constant_multiples+c] == 1
+		)
+		# Constrain last N to always be enabled
+		@constraint(model, [a = nof_adders-(nof_constant_multiples-1):nof_adders],
+			adder_enables[a] == 1
+		)
+	end
+
+	# C: Adder outputs respect their coefficient locks
+	if param.constraint_options.use_indicator_constraints_not_big_m
+		@constraint(model, [a = 1:nof_adders, c = 1:nof_constant_multiples],
+			adder_output_value_sel[c, a] --> {adder_outputs[a] == constant_multiples[c]}
+		)
+	else
+		output_bigM = nof_adder_inputs*max_shift_factor*maximum_value
+		@constraint(model, [a = 1:nof_adders, c = 1:nof_constant_multiples],
+			adder_outputs[a] <= constant_multiples[c] + (1-adder_output_value_sel[c, a])*output_bigM
+		)
+		@constraint(model, [a = 1:nof_adders, c = 1:nof_constant_multiples],
+			constant_multiples[c] - (1-adder_output_value_sel[c, a])*output_bigM <= adder_outputs[a]
+		)
+	end
+
+	if length(suggestions) > 0
+		## if there are suggestions, constrain the outputs to these when enabled
+		# TODO implement
+
+		# @show nof_factor_adders = nof_adders-nof_constant_multiples
+		# @show nof_suggestions = length(suggestions)
+		# @show nof_free_adders = nof_factor_adders-nof_suggestions
+		# @show (nof_factor_adders-(nof_suggestions-1)):nof_factor_adders
+		# @constraint(model, [a = (nof_factor_adders-(nof_suggestions-1)):nof_factor_adders],
+		# 	adder_outputs[nof_free_adders+a] == adder_enables[nof_free_adders+a]*suggestions[a]
+		# )
+	end
 
 	## enumerate the depth of the adders
 	@variable(model, 0 <= adder_depth[a = 0:nof_adders] <= nof_adders+1, Int)
@@ -534,11 +580,12 @@ function mcm_model(
 			adder_input_value_sel[s,i,a] --> {adder_input_depths[i, a] == adder_depth[s]}
 		)
 	else
+		depth_M = nof_adders+1
 		@constraint(model, [s = 0:nof_adders, i = 1:nof_adder_inputs, a = 1:nof_adders],
-			adder_depth[s] - (1 - adder_input_value_sel[s,i,a])*depth_M <= adder_input_depths[i, a] 
+			adder_input_depths[i, a] <= adder_depth[s] + (1-adder_input_value_sel[s,i,a])*depth_M
 		)
 		@constraint(model, [s = 0:nof_adders, i = 1:nof_adder_inputs, a = 1:nof_adders],
-			adder_input_depths[i, a] <= adder_depth[s] + (1 - adder_input_value_sel[s,i,a])*depth_M
+			adder_depth[s] - (1-adder_input_value_sel[s,i,a])*depth_M <= adder_input_depths[i, a]
 		)
 	end
 
